@@ -1,0 +1,4 @@
+#サーバーの起動、クライアントからの接続を受け付ける、各クライアントのプレイヤー座標を受信、全プレイヤーの情報を全クライアントに送る
+import socket
+import threading
+import json
