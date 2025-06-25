@@ -45,12 +45,25 @@ class Game:
         pg.display.flip()
         
     def run(self):
+        clock = pg.time.Clock() # FPS調整用
         while True:
             self.draw()
+            # イベント処理
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
+            # キー入力チェック(キー押しっぱなし検出)
+            keys = pg.key.get_pressed()
+            if keys[pg.K_w]:
+                print("Wキーが押されています")
+            if keys[pg.K_s]:
+                print("Sキーが押されています")
+            if keys[pg.K_a]:
+                print("Aキーが押されています")
+            if keys[pg.K_d]:
+                print("Dキーが押されています")
+            clock.tick(60) # FPS 60 に制限
         
 if __name__ == "__main__":
     game = Game()
