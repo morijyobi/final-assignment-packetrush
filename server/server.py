@@ -1,48 +1,57 @@
-#サーバーの起動、クライアントからの接続を受け付ける、各クライアントのプレイヤー座標を受信、全プレイヤーの情報を全クライアントに送る
+# server/server.py
 import socket
-import threading
 import json
+import uuid  # プレイヤーIDを一意に発行するため
 
-# サーバーのIPとポート設定
-HOST = '0.0.0.0'   # すべてのIPからの接続を受け付ける
-PORT = 12345       # 任意のUDPポート
+# サーバーの設定を外部から読み込む
+from server.utils import config as server_config
 
 clients = []
 positions = {}
 # UDPソケット作成
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_socket.bind((server_config.HOST, server_config.PORT))
+print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で待機中...")
 
-# ソケットをバインド
-server_socket.bind((HOST, PORT))
-print(f"🟢 サーバー起動: {HOST}:{PORT} で待機中...")
-
-# クライアントからのデータを受信して表示
-def handle_client(conn, addr):
-    player_id = addr[len(clients)]
-    positions[player_id] = {"x": 0, "y": 0} #後で鬼ごっこ開始時の初期座標に更新しないといけない。
-    try:
-        while True:
-            data, addr = server_socket.recvfrom(1024)  # 最大1024バイトまで受信
-            reply = "受け取りました"
-            server_socket.sendto(reply.encode(), addr)
-            conn, addr = server_socket.accept()
-            clients.append(conn)
-            thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
-            thread.start()
-            if not data:
-                break
-            pos = json.loads(data.decode())
-            positions[player_id] = pos
-            broadcast(json.dumps(positions).encode())
-    except Exception as e:
-        print(f"エラー:{e}")
-    finally:
-        conn.close()
-        clients.remove(conn)
-        del positions[player_id]
+# プレイヤー情報を記録する辞書 {addr: {"id": ..., "name": ..., "pos": (x, y)}}
+players = {}
 def broadcast(message):
     for client in clients:
         try:
             client.sendall(message)
         except:
             pass 
+while True:
+    try:
+        data, addr = server_socket.recvfrom(1024)
+        message = json.loads(data.decode())
+
+        # 接続要求の処理
+        if message.get("type") == "connect_request":
+            player_name = message.get("name", "Unknown")
+            player_id = str(uuid.uuid4())[:8]  # 短い一意IDを発行
+
+            players[addr] = {
+                "id": player_id,
+                "name": player_name,
+                "pos": (0, 0),  # 仮の初期位置
+            }
+
+            print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {player_name}")
+
+            reply = {
+                "type": "connect_ack",
+                "player_id": player_id
+            }
+            server_socket.sendto(json.dumps(reply).encode(), addr)
+            broadcast(json.dumps(positions).encode())
+        else:
+            print(f"[受信] {addr} から: {message}")
+            # ここに他のメッセージタイプの処理を今後追加
+
+    except Exception as e:
+        print("[ERROR]", e)
+    finally:
+        conn.close()
+        clients.remove(conn)
+        del positions[player_id]
