@@ -6,6 +6,8 @@ import uuid  # プレイヤーIDを一意に発行するため
 # サーバーの設定を外部から読み込む
 from server.utils import config as server_config
 
+clients = []
+positions = {}
 # UDPソケット作成
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind((server_config.HOST, server_config.PORT))
@@ -13,8 +15,12 @@ print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で�
 
 # プレイヤー情報を記録する辞書 {addr: {"id": ..., "name": ..., "pos": (x, y)}}
 players = {}
-
-# メインループ
+def broadcast(message):
+    for client in clients:
+        try:
+            client.sendall(message)
+        except:
+            pass 
 while True:
     try:
         data, addr = server_socket.recvfrom(1024)
@@ -38,10 +44,14 @@ while True:
                 "player_id": player_id
             }
             server_socket.sendto(json.dumps(reply).encode(), addr)
-
+            broadcast(json.dumps(positions).encode())
         else:
             print(f"[受信] {addr} から: {message}")
             # ここに他のメッセージタイプの処理を今後追加
 
     except Exception as e:
         print("[ERROR]", e)
+    finally:
+        conn.close()
+        clients.remove(conn)
+        del positions[player_id]
