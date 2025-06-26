@@ -1,10 +1,10 @@
+# game.py
 #ソケットの通信の準備、プレイヤー情報の送受信など
 import pygame as pg, sys
 import socket
 import json
 from player import Player
 from utils import config
-
 
 pg.init()
 screen = pg.display.set_mode((800, 600))
@@ -87,12 +87,16 @@ class Game:
             keys = pg.key.get_pressed()
             if keys[pg.K_w]:
                 print("Wキーが押されています")
+                Player.chararect1.y += Player.player_speed
             if keys[pg.K_s]:
                 print("Sキーが押されています")
+                Player.chararect1.y -= Player.player_speed
             if keys[pg.K_a]:
                 print("Aキーが押されています")
+                Player.chararect1.x -= Player.player_speed
             if keys[pg.K_d]:
                 print("Dキーが押されています")
+                Player.chararect1.x += Player.player_speed
             clock.tick(60) # FPS 60 に制限
 if __name__ == "__main__":
     game = Game()
