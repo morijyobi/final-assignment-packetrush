@@ -2,9 +2,9 @@
 import pygame as pg, sys
 import socket
 import json
+import threading
 from player import Player
 from utils import config
-
 
 pg.init()
 screen = pg.display.set_mode((800, 600))
@@ -21,9 +21,13 @@ class Game:
         self.socket.settimeout(5)
 
         self.player_id = None
+        self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
 
         # サーバーに接続要求を送信
         self.send_connect_request()
+
+        # サーバーからのメッセージを待機するスレッド
+        threading.Thread(target=self.receive_loop, daemon=True).start()
 
         # 障害物画像
         self.obstacle_images = {
@@ -66,7 +70,20 @@ class Game:
         except socket.timeout:
             print("[接続失敗] サーバーから応答なし")
 
+    def receive_loop(self):
+        # サーバーからのデータを受信し続けるループ
+        while True:
+            try:
+                data, _ = self.socket.recvfrom(2048)
+                message = json.loads(data.decode())
+                if message.get("type") == "start_game":
+                    print("[🎮] ゲーム開始シグナル受信")
+                    self.state = "playing"  # ロビーからプレイ状態へ遷移
+            except Exception as e:
+                print("[受信エラー]", e)
+
     def draw(self):
+        # ゲームプレイ画面の描画
         screen.blit(haikeimg, (0, 0))
         for obs in self.obstacles:
             img = self.obstacle_images.get(obs["type"])
@@ -74,26 +91,41 @@ class Game:
                 screen.blit(img, obs["pos"])
         pg.display.flip()
 
+    def draw_lobby(self):
+        # ロビー画面の描画（仮）
+        screen.fill((20, 20, 60))
+        font = pg.font.SysFont(None, 40)
+        text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        screen.blit(text, (100, 250))
+        pg.display.flip()
+
     def run(self):
         clock = pg.time.Clock() # FPS調整用
         while True:
-            self.draw()
             # イベント処理
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
-            # キー入力チェック(キー押しっぱなし検出)
-            keys = pg.key.get_pressed()
-            if keys[pg.K_w]:
-                print("Wキーが押されています")
-            if keys[pg.K_s]:
-                print("Sキーが押されています")
-            if keys[pg.K_a]:
-                print("Aキーが押されています")
-            if keys[pg.K_d]:
-                print("Dキーが押されています")
+
+            # ゲーム状態に応じた処理
+            if self.state == "lobby":
+                self.draw_lobby()
+            elif self.state == "playing":
+                self.draw()
+                # キー入力チェック(キー押しっぱなし検出)
+                keys = pg.key.get_pressed()
+                if keys[pg.K_w]:
+                    print("Wキーが押されています")
+                if keys[pg.K_s]:
+                    print("Sキーが押されています")
+                if keys[pg.K_a]:
+                    print("Aキーが押されています")
+                if keys[pg.K_d]:
+                    print("Dキーが押されています")
+
             clock.tick(60) # FPS 60 に制限
+
 if __name__ == "__main__":
     game = Game()
     game.run()
