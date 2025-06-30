@@ -1,8 +1,10 @@
+# game.py
 #ソケットの通信の準備、プレイヤー情報の送受信など
 import pygame as pg, sys
 import socket
 import json
 import threading
+from server.game_state import GameState
 from player import Player
 from utils import config
 
@@ -22,7 +24,8 @@ class Game:
 
         self.player_id = None
         self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
-
+        # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
+        self.all_players_on_screen = {}
         # サーバーに接続要求を送信
         self.send_connect_request()
 
@@ -107,23 +110,35 @@ class Game:
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
-
-            # ゲーム状態に応じた処理
-            if self.state == "lobby":
-                self.draw_lobby()
-            elif self.state == "playing":
-                self.draw()
-                # キー入力チェック(キー押しっぱなし検出)
-                keys = pg.key.get_pressed()
+            # キー入力チェック(キー押しっぱなし検出)
+            keys = pg.key.get_pressed()
+            my_player = self.all_players_on_screen.get(self.player_id)
+            if my_player.role == "oni": #鬼の移動
                 if keys[pg.K_w]:
                     print("Wキーが押されています")
+                    Player.onirect.y += Player.oni_speed
                 if keys[pg.K_s]:
                     print("Sキーが押されています")
+                    Player.onirect.y -= Player.oni_speed
                 if keys[pg.K_a]:
                     print("Aキーが押されています")
+                    Player.onirect.x -= Player.oni_speed
                 if keys[pg.K_d]:
                     print("Dキーが押されています")
-
+                    Player.onirect.x += Player.oni_speed
+            else: #逃げる人の移動
+                if keys[pg.K_w]:
+                    print("Wキーが押されています")
+                    Player.chararect1.y += Player.player_speed
+                if keys[pg.K_s]:
+                    print("Sキーが押されています")
+                    Player.chararect1.y -= Player.player_speed
+                if keys[pg.K_a]:
+                    print("Aキーが押されています")
+                    Player.chararect1.x -= Player.player_speed
+                if keys[pg.K_d]:
+                    print("Dキーが押されています")
+                    Player.chararect1.x += Player.player_speed
             clock.tick(60) # FPS 60 に制限
 
 if __name__ == "__main__":

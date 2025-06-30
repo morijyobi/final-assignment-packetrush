@@ -6,8 +6,9 @@ class PlayerState:
         self.is_it = False # 鬼かどうか
     def to_dict(self):
         return {
-            "id" : self.player_id,
-            "position" : self.position,
-            "is_it" : self.is_it
-        }
+            "id": self.player_id,
+            "position": self.position,
+            "role": self.role  
+    }
+
         
