@@ -5,6 +5,8 @@ from server.player_state import PlayerState
 
 import random
 from server.player_state import PlayerState
+import pygame as pg
+from client.player import Player
 
 class GameState:
     def __init__(self):
@@ -80,3 +82,7 @@ class GameState:
             pid: player.to_dict()
             for pid, player in self.players.items()
         }
+
+    def collision_process(self):
+        #　鬼と逃げる人の衝突処理
+            print("捕まりました")
