@@ -3,8 +3,6 @@ import random
 from server.player_state import PlayerState
 # プレイヤー情報と役割割当、ゲーム進行状況の管理
 
-import random
-from server.player_state import PlayerState
 
 class GameState:
     def __init__(self):

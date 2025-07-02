@@ -1,29 +1,30 @@
-#ソケットの通信の準備、プレイヤー情報の送受信など
+# ソケットの通信の準備、プレイヤー情報の送受信など
 import pygame as pg, sys
 import socket
 import json
 from player import Player
 from utils import config
 
-
 pg.init()
-screen = pg.display.set_mode((800, 600))
+screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 
 # 背景画像
 haikeimg = pg.image.load("client/assets/images/map.png")
-haikeimg = pg.transform.scale(haikeimg, (800, 600))
+haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 
 class Game:
     def __init__(self):
-        # ソケット通信の初期化
-        self.server_addr = (config.SERVER_HOST, config.SERVER_PORT)
+        pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(5)
 
+        self.server_ip = ""
+        self.server_port = config.SERVER_PORT
+        self.server_addr = None
         self.player_id = None
+        self.ip_entered = False
 
-        # サーバーに接続要求を送信
-        self.send_connect_request()
+        self.font = pg.font.SysFont(None, 48)
 
         # 障害物画像
         self.obstacle_images = {
@@ -49,10 +50,39 @@ class Game:
             {"type": "momiji", "pos": (530, 340)}
         ]
 
+    # ロビー画面の描画
+    def draw_lobby(self):
+        screen.fill((30, 30, 30))
+        title = self.font.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
+        input_text = self.font.render(self.server_ip, True, (0, 255, 0))
+        screen.blit(title, (100, 200))
+        screen.blit(input_text, (100, 300))
+        pg.display.flip()
+
+    # ロビーでのIP入力ループ
+    def lobby_loop(self):
+        while not self.ip_entered:
+            self.draw_lobby()
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                elif event.type == pg.KEYDOWN:
+                    if event.key == pg.K_RETURN:
+                        self.ip_entered = True
+                        self.send_connect_request()
+                    elif event.key == pg.K_BACKSPACE:
+                        self.server_ip = self.server_ip[:-1]
+                    else:
+                        if len(self.server_ip) < 15:
+                            self.server_ip += event.unicode
+
+    # サーバーへの接続要求を送る
     def send_connect_request(self):
+        self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
-            "name": "Player1"
+            "name": "Player"
         }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
         try:
@@ -66,6 +96,7 @@ class Game:
         except socket.timeout:
             print("[接続失敗] サーバーから応答なし")
 
+    # ゲーム画面の描画
     def draw(self):
         screen.blit(haikeimg, (0, 0))
         for obs in self.obstacles:
@@ -74,16 +105,17 @@ class Game:
                 screen.blit(img, obs["pos"])
         pg.display.flip()
 
+    # ゲームループ
     def run(self):
-        clock = pg.time.Clock() # FPS調整用
+        self.lobby_loop()  # ← まずIPアドレスを入力
+
+        clock = pg.time.Clock()
         while True:
             self.draw()
-            # イベント処理
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
-            # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
             if keys[pg.K_w]:
                 print("Wキーが押されています")
@@ -93,7 +125,9 @@ class Game:
                 print("Aキーが押されています")
             if keys[pg.K_d]:
                 print("Dキーが押されています")
-            clock.tick(60) # FPS 60 に制限
+            clock.tick(config.FPS)
+
+# メイン処理
 if __name__ == "__main__":
     game = Game()
     game.run()
