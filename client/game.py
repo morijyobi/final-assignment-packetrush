@@ -143,7 +143,7 @@ class Game:
             #鬼と逃げる人の衝突
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
-                Player.chararect1.width = 0
+                Player.chararect1.height = 0
 
 if __name__ == "__main__":
     game = Game()
