@@ -4,33 +4,42 @@ import pygame as pg, sys
 import socket
 import json
 import threading
+from .player import Player
+from client.utils import config
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
-from player import Player
-from utils import config
 
 pg.init()
-screen = pg.display.set_mode((800, 600))
+screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 WHITE = (255, 255, 255)
 # 背景画像
 haikeimg = pg.image.load("client/assets/images/map.png")
-haikeimg = pg.transform.scale(haikeimg, (800, 600))
+haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 
 # 制限時間
 total_time = 90
 start_time = pg.time.get_ticks()
 class Game:
     def __init__(self):
-        # ソケット通信の初期化
-        self.server_addr = (config.SERVER_HOST, config.SERVER_PORT)
+        pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(5)
 
+        self.server_ip = ""
+        self.server_port = config.SERVER_PORT
+        self.server_addr = None
         self.player_id = None
+        self.ip_entered = False
+
+        self.font = pg.font.SysFont(None, 48)
         self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         # サーバーに接続要求を送信
         self.send_connect_request()
+
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -59,10 +68,39 @@ class Game:
             {"type": "momiji", "pos": (530, 340)}
         ]
 
+    # ロビー画面の描画
+    def draw_lobby(self):
+        screen.fill((30, 30, 30))
+        title = self.font.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
+        input_text = self.font.render(self.server_ip, True, (0, 255, 0))
+        screen.blit(title, (100, 200))
+        screen.blit(input_text, (100, 300))
+        pg.display.flip()
+
+    # ロビーでのIP入力ループ
+    def lobby_loop(self):
+        while not self.ip_entered:
+            self.draw_lobby()
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                elif event.type == pg.KEYDOWN:
+                    if event.key == pg.K_RETURN:
+                        self.ip_entered = True
+                        self.send_connect_request()
+                    elif event.key == pg.K_BACKSPACE:
+                        self.server_ip = self.server_ip[:-1]
+                    else:
+                        if len(self.server_ip) < 15:
+                            self.server_ip += event.unicode
+
+    # サーバーへの接続要求を送る
     def send_connect_request(self):
+        self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
-            "name": "Player1"
+            "name": "Player"
         }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
         try:
@@ -76,6 +114,7 @@ class Game:
         except socket.timeout:
             print("[接続失敗] サーバーから応答なし")
 
+    # ゲーム画面の描画
     def receive_loop(self):
         # サーバーからのデータを受信し続けるループ
         while True:
@@ -87,6 +126,7 @@ class Game:
                     self.state = "playing"  # ロビーからプレイ状態へ遷移
             except Exception as e:
                 print("[受信エラー]", e)
+
 
     def draw(self):
         # ゲームプレイ画面の描画
@@ -106,14 +146,17 @@ class Game:
         pg.display.flip()
 
     def run(self):
-        clock = pg.time.Clock() # FPS調整用
+        self.lobby_loop()  # ← まずIPアドレスを入力
+
+        clock = pg.time.Clock()
         while True:
+            self.draw()
             # イベント処理
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
-            # 制限時間
+
             current_time = pg.time.get_ticks()
             elapsed_time = (current_time - start_time) / 1000
             remaining_time = total_time - elapsed_time
@@ -121,6 +164,8 @@ class Game:
             timer_text = pg.font.Font(None, 74).render(f"Time: {display_time}", True, WHITE)
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
+
+# メイン処理
             my_player = self.all_players_on_screen.get(self.player_id)
             if my_player.role == "oni": #鬼の移動
                 if keys[pg.K_w]:
@@ -156,6 +201,7 @@ class Game:
                 
             text_rect = timer_text.get_rect(center=(800 // 2, 50))
             screen.blit(timer_text, text_rect)
+
 
 if __name__ == "__main__":
     game = Game()

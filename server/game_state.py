@@ -1,10 +1,10 @@
 #プレイヤー情報を格納、ゲームの進行状況(例:待機中、プレイ中、終了など)の管理、タイマー処理、プレイヤーの追加・削除、位置更新など
 import random
 from server.player_state import PlayerState
-# プレイヤー情報と役割割当、ゲーム進行状況の管理
 import time
 import pygame as pg
 from client.player import Player
+
 
 class GameState:
     def __init__(self):
@@ -48,6 +48,20 @@ class GameState:
     #         "remaining_time" : self.remaining_time
     #         }
         
+        # 障害物の矩形(座標とサイズ)
+        self.obstacles = [
+            pg.Rect(230, 180, 60, 60),
+            pg.Rect(230, 260, 60, 60),
+            pg.Rect(230, 340, 60, 60),
+            pg.Rect(380, 50, 80, 80),
+            pg.Rect(383, 130, 80, 80),
+            pg.Rect(350, 250, 30, 30),
+            pg.Rect(450, 330, 30, 30),
+            pg.Rect(500, 90, 30, 30),
+            pg.Rect(530, 180, 60, 60),
+            pg.Rect(530, 260, 60, 60),
+            pg.Rect(530, 340, 60, 60)
+            ]
     def add_player(self, player_id):
         if player_id in self.players:
             print(f"⚠️ 既に参加済: {player_id}")
@@ -96,10 +110,6 @@ class GameState:
             self.players[pid].role = "spectator"
             self.players[pid].position = self.start_positions["spectator"]
 
-    def update_player_position(self, player_id, new_pos):
-        if player_id in self.players:
-            self.players[player_id].position = new_pos
-
     def get_game_state(self):
         """全プレイヤーの状態を辞書で返す（クライアント送信用）"""
         return {
@@ -109,4 +119,25 @@ class GameState:
 
     def collision_process(self):
         #　鬼と逃げる人の衝突処理
-            print("捕まりました")
+        oni = self.players.get(self.tagged_player_id)
+        if not oni:
+            return
+        oni_rect = pg.Rect(oni.position[0], oni.position[1], 50, 50)
+        for pid, player in self.players.items():
+            if player.role == "runner":
+                runner_rect = pg.Rect(player.position[0], player.position[1], 50, 50)
+                if oni_rect.colliderect(runner_rect):
+                    print(f"{pid}が鬼に捕まりました!")
+    def update_player_position(self, player_id, new_pos):
+        if player_id not in self.players:
+            return
+        player = self.players[player_id]
+        new_rect = pg.Rect(new_pos[0], new_pos[1], 50, 50)
+        # 障害物とぶつかるなら移動しない
+        for obstacle in self.obstacles:
+            if new_rect.collidedict(obstacle):
+                print(f"{player_id}は障害物にぶつかりました")
+                return # 移動せず終了
+        # 障害物が無ければ位置を更新
+        player.position = new_pos
+            
