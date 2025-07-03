@@ -1,7 +1,10 @@
-# ソケットの通信の準備、プレイヤー情報の送受信など
+# game.py
+#ソケットの通信の準備、プレイヤー情報の送受信など
 import pygame as pg, sys
 import socket
 import json
+import threading
+from server.game_state import GameState
 from player import Player
 from utils import config
 
@@ -25,6 +28,15 @@ class Game:
         self.ip_entered = False
 
         self.font = pg.font.SysFont(None, 48)
+        self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
+        # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
+        self.all_players_on_screen = {}
+        # サーバーに接続要求を送信
+        self.send_connect_request()
+
+
+        # サーバーからのメッセージを待機するスレッド
+        threading.Thread(target=self.receive_loop, daemon=True).start()
 
         # 障害物画像
         self.obstacle_images = {
@@ -97,7 +109,21 @@ class Game:
             print("[接続失敗] サーバーから応答なし")
 
     # ゲーム画面の描画
+    def receive_loop(self):
+        # サーバーからのデータを受信し続けるループ
+        while True:
+            try:
+                data, _ = self.socket.recvfrom(2048)
+                message = json.loads(data.decode())
+                if message.get("type") == "start_game":
+                    print("[🎮] ゲーム開始シグナル受信")
+                    self.state = "playing"  # ロビーからプレイ状態へ遷移
+            except Exception as e:
+                print("[受信エラー]", e)
+
+
     def draw(self):
+        # ゲームプレイ画面の描画
         screen.blit(haikeimg, (0, 0))
         for obs in self.obstacles:
             img = self.obstacle_images.get(obs["type"])
@@ -105,29 +131,62 @@ class Game:
                 screen.blit(img, obs["pos"])
         pg.display.flip()
 
-    # ゲームループ
+    def draw_lobby(self):
+        # ロビー画面の描画（仮）
+        screen.fill((20, 20, 60))
+        font = pg.font.SysFont(None, 40)
+        text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        screen.blit(text, (100, 250))
+        pg.display.flip()
+
     def run(self):
         self.lobby_loop()  # ← まずIPアドレスを入力
 
         clock = pg.time.Clock()
         while True:
             self.draw()
+            # イベント処理
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
             keys = pg.key.get_pressed()
-            if keys[pg.K_w]:
-                print("Wキーが押されています")
-            if keys[pg.K_s]:
-                print("Sキーが押されています")
-            if keys[pg.K_a]:
-                print("Aキーが押されています")
-            if keys[pg.K_d]:
-                print("Dキーが押されています")
-            clock.tick(config.FPS)
 
 # メイン処理
+            my_player = self.all_players_on_screen.get(self.player_id)
+            if my_player.role == "oni": #鬼の移動
+                if keys[pg.K_w]:
+                    print("Wキーが押されています")
+                    Player.onirect.y += Player.oni_speed
+                if keys[pg.K_s]:
+                    print("Sキーが押されています")
+                    Player.onirect.y -= Player.oni_speed
+                if keys[pg.K_a]:
+                    print("Aキーが押されています")
+                    Player.onirect.x -= Player.oni_speed
+                if keys[pg.K_d]:
+                    print("Dキーが押されています")
+                    Player.onirect.x += Player.oni_speed
+            else: #逃げる人の移動
+                if keys[pg.K_w]:
+                    print("Wキーが押されています")
+                    Player.chararect1.y += Player.player_speed
+                if keys[pg.K_s]:
+                    print("Sキーが押されています")
+                    Player.chararect1.y -= Player.player_speed
+                if keys[pg.K_a]:
+                    print("Aキーが押されています")
+                    Player.chararect1.x -= Player.player_speed
+                if keys[pg.K_d]:
+                    print("Dキーが押されています")
+                    Player.chararect1.x += Player.player_speed
+            clock.tick(60) # FPS 60 に制限
+            #鬼と逃げる人の衝突
+            if Player.onirect.colliderect(Player.chararect1):
+                Player.chararect1.width = 0
+                Player.chararect1.height = 0
+
+
 if __name__ == "__main__":
     game = Game()
     game.run()

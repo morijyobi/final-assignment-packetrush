@@ -1,7 +1,8 @@
 #プレイヤー情報を格納、ゲームの進行状況(例:待機中、プレイ中、終了など)の管理、タイマー処理、プレイヤーの追加・削除、位置更新など
 import random
 from server.player_state import PlayerState
-# プレイヤー情報と役割割当、ゲーム進行状況の管理
+import pygame as pg
+from client.player import Player
 
 
 class GameState:
@@ -78,3 +79,7 @@ class GameState:
             pid: player.to_dict()
             for pid, player in self.players.items()
         }
+
+    def collision_process(self):
+        #　鬼と逃げる人の衝突処理
+            print("捕まりました")

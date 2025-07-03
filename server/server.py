@@ -5,6 +5,8 @@ import uuid  # プレイヤーIDを一意に発行するため
 
 from server.utils import config as server_config
 
+data_list = [] #受信したデータを記憶するリスト
+
 # UDPソケット作成
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind((server_config.HOST, server_config.PORT))
@@ -12,6 +14,7 @@ print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で�
 
 # プレイヤー情報を記録する辞書 {addr: {...}}
 players = {}
+
 
 # 必要なプレイヤー数（これで開始）
 REQUIRED_PLAYERS = 1
@@ -23,6 +26,10 @@ while True:
     try:
         data, addr = server_socket.recvfrom(1024)
         message = json.loads(data.decode())
+        decode_data = data.decode("utf-8")
+        print(f"[受信] {addr} から: {decode_data}")
+        data_list.append(decode_data)
+        # 接続要求の処理
 
         if message.get("type") == "connect_request":
             if addr in players:
@@ -38,12 +45,13 @@ while True:
             }
 
             print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {player_name}")
-
+            print(data_list)#受信したデータを記憶するリストのテスト
             reply = {
                 "type": "connect_ack",
                 "player_id": player_id
             }
             server_socket.sendto(json.dumps(reply).encode(), addr)
+
 
             # ★ プレイヤー人数が揃ったらゲーム開始シグナルを送る
             if len(players) >= REQUIRED_PLAYERS and not game_started:
@@ -53,8 +61,11 @@ while True:
                     server_socket.sendto(start_msg, p_addr)
                 game_started = True  # ゲーム開始フラグON
 
+
         else:
             print(f"[受信] {addr} から: {message}")
 
     except Exception as e:
+
         print(f"[エラー] {e}")
+
