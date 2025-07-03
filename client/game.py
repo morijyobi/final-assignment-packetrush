@@ -10,11 +10,14 @@ from utils import config
 
 pg.init()
 screen = pg.display.set_mode((800, 600))
-
+WHITE = (255, 255, 255)
 # 背景画像
 haikeimg = pg.image.load("client/assets/images/map.png")
 haikeimg = pg.transform.scale(haikeimg, (800, 600))
 
+# 制限時間
+total_time = 60
+start_time = pg.time.get_ticks()
 class Game:
     def __init__(self):
         # ソケット通信の初期化
@@ -110,6 +113,12 @@ class Game:
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
+            # 制限時間
+            current_time = pg.time.get_ticks()
+            elapsed_time = (current_time - start_time) / 1000
+            remaining_time = total_time - elapsed_time
+            display_time = int(remaining_time)
+            timer_text = pg.font.Font(None, 74).render(f"Time: {display_time}", True, WHITE)
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
             my_player = self.all_players_on_screen.get(self.player_id)
@@ -144,6 +153,9 @@ class Game:
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
+                
+            text_rect = timer_text.get_rect(center=(800 // 2, 50))
+            screen.blit(timer_text, text_rect)
 
 if __name__ == "__main__":
     game = Game()

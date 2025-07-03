@@ -2,9 +2,7 @@
 import random
 from server.player_state import PlayerState
 # プレイヤー情報と役割割当、ゲーム進行状況の管理
-
-import random
-from server.player_state import PlayerState
+import time
 import pygame as pg
 from client.player import Player
 
@@ -12,6 +10,10 @@ class GameState:
     def __init__(self):
         self.players = {}  # {player_id: PlayerState}
         self.tagged_player_id = None  # 鬼のID
+        # self.game_active = False
+        # self.game_duration = 180
+        # self.start_time = 0
+        # self.remaining_time = self.game_duration
 
         # 役割ごとの初期位置
         self.start_positions = {
@@ -23,7 +25,29 @@ class GameState:
             ],
             "spectator": (400, 300)  # 中央
         }
-
+        
+    # def start_game(self):
+    #     self.game_active = True
+    #     self.start_time = time.time
+    #     print("ゲーム開始")
+        
+    # def update_game_state(self):
+    #     if self.game_active:
+    #         elapsed_time = time.time() - self.start_time
+    #         self.remaining_time = max(self.game_duration - int(elapsed_time))#残り時間を計算
+            
+    #         if self.remaining_time <= 0:
+    #             self.game_active = False
+    #             print("時間切れ")
+    
+    # def get_state_for_clientt(self):
+    #     return {
+    #         # クライアントに送るゲーム状態を辞書形式で返す
+    #         "type" : "game_state_update",
+    #         "game_active" : self.game_active,
+    #         "remaining_time" : self.remaining_time
+    #         }
+        
     def add_player(self, player_id):
         if player_id in self.players:
             print(f"⚠️ 既に参加済: {player_id}")
