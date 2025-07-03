@@ -10,13 +10,17 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
+
 pg.init()
 screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-
+WHITE = (255, 255, 255)
 # 背景画像
 haikeimg = pg.image.load("client/assets/images/map.png")
 haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 
+# 制限時間
+total_time = 90
+start_time = pg.time.get_ticks()
 class Game:
     def __init__(self):
         pg.font.init()
@@ -152,6 +156,13 @@ class Game:
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
+
+            current_time = pg.time.get_ticks()
+            elapsed_time = (current_time - start_time) / 1000
+            remaining_time = total_time - elapsed_time
+            display_time = int(remaining_time)
+            timer_text = pg.font.Font(None, 74).render(f"Time: {display_time}", True, WHITE)
+            # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
 
 # メイン処理
@@ -187,6 +198,9 @@ class Game:
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
+                
+            text_rect = timer_text.get_rect(center=(800 // 2, 50))
+            screen.blit(timer_text, text_rect)
 
 
 if __name__ == "__main__":

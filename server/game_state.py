@@ -1,6 +1,7 @@
 #プレイヤー情報を格納、ゲームの進行状況(例:待機中、プレイ中、終了など)の管理、タイマー処理、プレイヤーの追加・削除、位置更新など
 import random
 from server.player_state import PlayerState
+import time
 import pygame as pg
 from client.player import Player
 
@@ -9,6 +10,10 @@ class GameState:
     def __init__(self):
         self.players = {}  # {player_id: PlayerState}
         self.tagged_player_id = None  # 鬼のID
+        # self.game_active = False
+        # self.game_duration = 180
+        # self.start_time = 0
+        # self.remaining_time = self.game_duration
 
         # 役割ごとの初期位置
         self.start_positions = {
@@ -20,6 +25,29 @@ class GameState:
             ],
             "spectator": (400, 300)  # 中央
         }
+        
+    # def start_game(self):
+    #     self.game_active = True
+    #     self.start_time = time.time
+    #     print("ゲーム開始")
+        
+    # def update_game_state(self):
+    #     if self.game_active:
+    #         elapsed_time = time.time() - self.start_time
+    #         self.remaining_time = max(self.game_duration - int(elapsed_time))#残り時間を計算
+            
+    #         if self.remaining_time <= 0:
+    #             self.game_active = False
+    #             print("時間切れ")
+    
+    # def get_state_for_clientt(self):
+    #     return {
+    #         # クライアントに送るゲーム状態を辞書形式で返す
+    #         "type" : "game_state_update",
+    #         "game_active" : self.game_active,
+    #         "remaining_time" : self.remaining_time
+    #         }
+        
         # 障害物の矩形(座標とサイズ)
         self.obstacles = [
             pg.Rect(230, 180, 60, 60),
