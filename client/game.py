@@ -4,10 +4,12 @@ import pygame as pg, sys
 import socket
 import json
 import threading
+from .player import Player
+from client.utils import config
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
-from player import Player
-from utils import config
-
 pg.init()
 screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 

@@ -15,7 +15,6 @@ print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で�
 # プレイヤー情報を記録する辞書 {addr: {...}}
 players = {}
 
-
 # 必要なプレイヤー数（これで開始）
 REQUIRED_PLAYERS = 1
 
@@ -45,13 +44,12 @@ while True:
             }
 
             print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {player_name}")
-            print(data_list)#受信したデータを記憶するリストのテスト
+
             reply = {
                 "type": "connect_ack",
                 "player_id": player_id
             }
             server_socket.sendto(json.dumps(reply).encode(), addr)
-
 
             # ★ プレイヤー人数が揃ったらゲーム開始シグナルを送る
             if len(players) >= REQUIRED_PLAYERS and not game_started:
@@ -60,12 +58,8 @@ while True:
                 for p_addr in players:
                     server_socket.sendto(start_msg, p_addr)
                 game_started = True  # ゲーム開始フラグON
-
-
         else:
             print(f"[受信] {addr} から: {message}")
 
     except Exception as e:
-
         print(f"[エラー] {e}")
-
