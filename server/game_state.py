@@ -1,12 +1,9 @@
 #プレイヤー情報を格納、ゲームの進行状況(例:待機中、プレイ中、終了など)の管理、タイマー処理、プレイヤーの追加・削除、位置更新など
 import random
 from server.player_state import PlayerState
-# プレイヤー情報と役割割当、ゲーム進行状況の管理
-
-import random
-from server.player_state import PlayerState
 import pygame as pg
 from client.player import Player
+
 
 class GameState:
     def __init__(self):
