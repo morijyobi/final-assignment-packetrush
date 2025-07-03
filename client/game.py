@@ -16,7 +16,7 @@ haikeimg = pg.image.load("client/assets/images/map.png")
 haikeimg = pg.transform.scale(haikeimg, (800, 600))
 
 # 制限時間
-total_time = 60
+total_time = 90
 start_time = pg.time.get_ticks()
 class Game:
     def __init__(self):
