@@ -20,12 +20,13 @@ haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIG
 
 # 制限時間
 total_time = 90
-start_time = pg.time.get_ticks()
 class Game:
     def __init__(self):
         pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(5)
+        self.font = pg.font.Font(None, 74)
+        self.start_game_time = 0
 
         self.server_ip = ""
         self.server_port = config.SERVER_PORT
@@ -124,6 +125,7 @@ class Game:
                 if message.get("type") == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"  # ロビーからプレイ状態へ遷移
+                    self.start_game_time = pg.time.get_ticks() #ゲーム開始時刻を記録
             except Exception as e:
                 print("[受信エラー]", e)
 
@@ -143,7 +145,7 @@ class Game:
         font = pg.font.SysFont(None, 40)
         text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
         screen.blit(text, (100, 250))
-        pg.display.flip()
+        # pg.display.flip()
 
     def run(self):
         self.lobby_loop()  # ← まずIPアドレスを入力
@@ -158,13 +160,13 @@ class Game:
                     sys.exit()
 
             current_time = pg.time.get_ticks()
-            elapsed_time = (current_time - start_time) / 1000
+            elapsed_time = (current_time - self.start_game_time) / 1000
             remaining_time = total_time - elapsed_time
             display_time = int(remaining_time)
-            timer_text = pg.font.Font(None, 74).render(f"Time: {display_time}", True, WHITE)
+            timer_text = self.font.render(f"Time: {display_time}", True, WHITE)
+            
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
-
 # メイン処理
             my_player = self.all_players_on_screen.get(self.player_id)
             if my_player.role == "oni": #鬼の移動
@@ -193,16 +195,27 @@ class Game:
                 if keys[pg.K_d]:
                     print("Dキーが押されています")
                     Player.chararect1.x += Player.player_speed
-            clock.tick(60) # FPS 60 に制限
             #鬼と逃げる人の衝突
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
-                
+            
+            if remaining_time <= 0:
+                remaining_time = 0
+                print("時間切れ")
+                pg.quit()
+                sys.exit()
+            elif Player.chararect1.width ==0 and Player.chararect1.height == 0:
+                # remaining_time = 0
+                print("時間切れ")
+                pg.quit()
+                sys.exit()
             text_rect = timer_text.get_rect(center=(800 // 2, 50))
             screen.blit(timer_text, text_rect)
-
-
+            
+            pg.display.flip() # 画面更新
+            clock.tick(60) # FPS 60 に制限
+            
 if __name__ == "__main__":
     game = Game()
     game.run()
