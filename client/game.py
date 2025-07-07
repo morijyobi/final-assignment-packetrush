@@ -21,12 +21,13 @@ haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIG
 # 制限時間
 total_time = 90
 class Game:
-    def __init__(self):
+    def __init__(self, role = "runner"):
         pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(5)
         self.font = pg.font.Font(None, 74)
         self.start_game_time = 0
+        self.role = role
 
         self.server_ip = ""
         self.server_port = config.SERVER_PORT
@@ -165,47 +166,50 @@ class Game:
             display_time = int(remaining_time)
             timer_text = self.font.render(f"Time: {display_time}", True, WHITE)
             
+            my_player = self.all_players_on_screen.get(self.player_id)
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
 # メイン処理
-            my_player = self.all_players_on_screen.get(self.player_id)
-            if my_player.role == "oni": #鬼の移動
+            if my_player.role == "runner": #逃げる人の移動
                 if keys[pg.K_w]:
                     print("Wキーが押されています")
-                    Player.onirect.y += Player.oni_speed
+                    Player.images_rect.y += Player.player_speed
                 if keys[pg.K_s]:
                     print("Sキーが押されています")
-                    Player.onirect.y -= Player.oni_speed
+                    Player.images_rect.y -= Player.player_speed
                 if keys[pg.K_a]:
                     print("Aキーが押されています")
-                    Player.onirect.x -= Player.oni_speed
+                    Player.images_rect.x -= Player.player_speed
                 if keys[pg.K_d]:
                     print("Dキーが押されています")
-                    Player.onirect.x += Player.oni_speed
-            else: #逃げる人の移動
+                    Player.images_rect.x += Player.player_speed
+            else: #鬼の移動
                 if keys[pg.K_w]:
                     print("Wキーが押されています")
-                    Player.chararect1.y += Player.player_speed
+                    Player.images_rect.y += Player.oni_speed
                 if keys[pg.K_s]:
                     print("Sキーが押されています")
-                    Player.chararect1.y -= Player.player_speed
+                    Player.images_rect.y -= Player.oni_speed
                 if keys[pg.K_a]:
                     print("Aキーが押されています")
-                    Player.chararect1.x -= Player.player_speed
+                    Player.images_rect.x -= Player.oni_speed
                 if keys[pg.K_d]:
                     print("Dキーが押されています")
-                    Player.chararect1.x += Player.player_speed
+                    Player.images_rect.x += Player.oni_speed
+                
             #鬼と逃げる人の衝突
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
             
             if remaining_time <= 0:
+                #時間切れの処理
                 remaining_time = 0
                 print("時間切れ")
                 pg.quit()
                 sys.exit()
             elif Player.chararect1.width ==0 and Player.chararect1.height == 0:
+                #全員捕まった時の処理
                 # remaining_time = 0
                 print("時間切れ")
                 pg.quit()
