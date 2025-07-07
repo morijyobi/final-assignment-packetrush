@@ -18,12 +18,14 @@ haikeimg = pg.image.load("client/assets/images/map.png")
 haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 # 制限時間
 total_time = 90
-start_time = pg.time.get_ticks()
 class Game:
-    def __init__(self):
+    def __init__(self, role = "runner"):
         pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(5)
+        self.font = pg.font.Font(None, 74)
+        self.start_game_time = 0
+        self.role = role
 
         self.server_ip = ""#後でタイトルかロビー画面で入力できるようにする
         self.server_port = config.SERVER_PORT
@@ -176,10 +178,12 @@ class Game:
                     sys.exit()
             
             current_time = pg.time.get_ticks()
-            elapsed_time = (current_time - start_time) / 1000
+            elapsed_time = (current_time - self.start_game_time) / 1000
             remaining_time = total_time - elapsed_time
             display_time = int(remaining_time)
-            timer_text = pg.font.Font(None, 74).render(f"Time: {display_time}", True, WHITE)
+            timer_text = self.font.render(f"Time: {display_time}", True, WHITE)
+            
+            my_player = self.all_players_on_screen.get(self.player_id)
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
 
@@ -200,11 +204,27 @@ class Game:
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
+                
+            if remaining_time <= 0:
+                #時間切れの処理
+                remaining_time = 0
+                print("時間切れ")
+                pg.quit()
+                sys.exit()
+                
+            elif Player.chararect1.width ==0 and Player.chararect1.height == 0:
+                #全員捕まった時の処理
+                # remaining_time = 0
+                print("時間切れ")
+                pg.quit()
+                sys.exit()
 
             text_rect = timer_text.get_rect(center=(800 // 2, 50))
             screen.blit(timer_text, text_rect)
-
-
+            
+            pg.display.flip() # 画面更新
+            clock.tick(60) # FPS 60 に制限
+            
 if __name__ == "__main__":
     game = Game()
     game.run()

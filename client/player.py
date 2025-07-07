@@ -6,11 +6,11 @@ from utils import config
 # プレイヤーの画像
 class Player:
     # images = {
-    #     "runner1":"client/assets/images/player1.png",
-    #     "runner2":"client/assets/images/player2.png",
-    #     "runner3":"client/assets/images/player3.png",
-    #     "oni":"client/assets/images/oni.png"
-    # }
+    #      "runner1":"client/assets/images/player1.png",
+    #      "runner2":"client/assets/images/player2.png",
+    #      "runner3":"client/assets/images/player3.png",
+    #      "oni":"client/assets/images/oni.png"
+    #  }
     # images_rect = (50, 50)
     charaimg1 = pg.image.load("client/assets/images/player1.png")
     charaimg1 = pg.transform.scale(charaimg1, (50, 50))
