@@ -2,7 +2,7 @@
 #プレイヤーの動きと表示を管理
 import pygame as pg, sys
 import uuid
-from client.utils import config
+from utils import config
 # プレイヤーの画像
 class Player:
     # images = {

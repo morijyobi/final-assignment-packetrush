@@ -4,9 +4,8 @@ import pygame as pg, sys
 import socket
 import json
 import threading
-from .player import Player
-from client.utils import config
-import sys
+from player import Player
+from utils import config
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
@@ -17,7 +16,6 @@ WHITE = (255, 255, 255)
 # 背景画像
 haikeimg = pg.image.load("client/assets/images/map.png")
 haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
-
 # 制限時間
 total_time = 90
 class Game:
@@ -29,7 +27,7 @@ class Game:
         self.start_game_time = 0
         self.role = role
 
-        self.server_ip = ""
+        self.server_ip = ""#後でタイトルかロビー画面で入力できるようにする
         self.server_port = config.SERVER_PORT
         self.server_addr = None
         self.player_id = None
@@ -39,9 +37,6 @@ class Game:
         self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
-        # サーバーに接続要求を送信
-        self.send_connect_request()
-
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -70,8 +65,8 @@ class Game:
             {"type": "momiji", "pos": (530, 340)}
         ]
 
-    # ロビー画面の描画
-    def draw_lobby(self):
+    # IPアドレス入力画面の描画
+    def draw_ip_input(self):
         screen.fill((30, 30, 30))
         title = self.font.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
         input_text = self.font.render(self.server_ip, True, (0, 255, 0))
@@ -79,10 +74,19 @@ class Game:
         screen.blit(input_text, (100, 300))
         pg.display.flip()
 
+    # ゲーム開始待機ロビー画面
+    def draw_lobby(self):
+        screen.fill((20, 20, 60))
+        font = pg.font.SysFont(None, 40)
+        text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        screen.blit(text, (100, 250))
+        pg.display.flip()
+
     # ロビーでのIP入力ループ
     def lobby_loop(self):
         while not self.ip_entered:
-            self.draw_lobby()
+            self.draw_ip_input()
+
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
@@ -103,7 +107,7 @@ class Game:
         connect_msg = {
             "type": "connect_request",
             "name": "Player"
-        }
+            }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
         try:
             data, _ = self.socket.recvfrom(1024)
@@ -111,28 +115,27 @@ class Game:
             if response.get("type") == "connect_ack":
                 self.player_id = response["player_id"]
                 print(f"[接続成功] プレイヤーID: {self.player_id}")
+                self.state = "lobby"  # ← これがないとdraw_lobbyが呼ばれない
             else:
                 print("[警告] サーバーから未知の応答:", response)
+                
         except socket.timeout:
             print("[接続失敗] サーバーから応答なし")
 
-    # ゲーム画面の描画
+    # サーバーからのメッセージ受信ループ
     def receive_loop(self):
-        # サーバーからのデータを受信し続けるループ
         while True:
             try:
                 data, _ = self.socket.recvfrom(2048)
                 message = json.loads(data.decode())
                 if message.get("type") == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
-                    self.state = "playing"  # ロビーからプレイ状態へ遷移
-                    self.start_game_time = pg.time.get_ticks() #ゲーム開始時刻を記録
+                    self.state = "playing"
             except Exception as e:
                 print("[受信エラー]", e)
 
-
+    # ゲーム画面の描画
     def draw(self):
-        # ゲームプレイ画面の描画
         screen.blit(haikeimg, (0, 0))
         for obs in self.obstacles:
             img = self.obstacle_images.get(obs["type"])
@@ -140,26 +143,40 @@ class Game:
                 screen.blit(img, obs["pos"])
         pg.display.flip()
 
-    def draw_lobby(self):
-        # ロビー画面の描画（仮）
-        screen.fill((20, 20, 60))
+
+    def draw_title(self):
+        # タイトル画面(仮)
+        self.state = "title"  # タイトル状態に設定
+        screen.fill((60, 20, 20))
+        # print("ゲーム状態：タイトル")
         font = pg.font.SysFont(None, 40)
-        text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
-        screen.blit(text, (100, 250))
-        # pg.display.flip()
+        text = font.render("ONI LINK", True, (255,255,255))
+        screen.blit(text,(100,250))
+        pg.display.flip()
+    
+    def draw_result(self):
+        self.state = "result"  # 結果状態に設定
+        screen.fill((20,60,20))
+        # print("ゲーム状態：試合結果")
+        font = pg.font.SysFont(None,40)
+        text = font.render("OOteam Victory!", True,(255,255,255))
+        screen.blit(text,(100,250))
+        pg.display.flip()
 
     def run(self):
-        self.lobby_loop()  # ← まずIPアドレスを入力
+        self.lobby_loop()
 
         clock = pg.time.Clock()
         while True:
-            self.draw()
-            # イベント処理
+            if self.state == "lobby":
+                self.draw_lobby()
+            else:
+                self.draw()
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
-
+            
             current_time = pg.time.get_ticks()
             elapsed_time = (current_time - self.start_game_time) / 1000
             remaining_time = total_time - elapsed_time
@@ -169,51 +186,39 @@ class Game:
             my_player = self.all_players_on_screen.get(self.player_id)
             # キー入力チェック(キー押しっぱなし検出)
             keys = pg.key.get_pressed()
-# メイン処理
-            if my_player.role == "runner": #逃げる人の移動
-                if keys[pg.K_w]:
-                    print("Wキーが押されています")
-                    Player.images_rect.y += Player.player_speed
-                if keys[pg.K_s]:
-                    print("Sキーが押されています")
-                    Player.images_rect.y -= Player.player_speed
-                if keys[pg.K_a]:
-                    print("Aキーが押されています")
-                    Player.images_rect.x -= Player.player_speed
-                if keys[pg.K_d]:
-                    print("Dキーが押されています")
-                    Player.images_rect.x += Player.player_speed
-            else: #鬼の移動
-                if keys[pg.K_w]:
-                    print("Wキーが押されています")
-                    Player.images_rect.y += Player.oni_speed
-                if keys[pg.K_s]:
-                    print("Sキーが押されています")
-                    Player.images_rect.y -= Player.oni_speed
-                if keys[pg.K_a]:
-                    print("Aキーが押されています")
-                    Player.images_rect.x -= Player.oni_speed
-                if keys[pg.K_d]:
-                    print("Dキーが押されています")
-                    Player.images_rect.x += Player.oni_speed
-                
-            #鬼と逃げる人の衝突
+
+            # メイン処理
+            my_player = self.all_players_on_screen.get(self.player_id)
+            if my_player and my_player.role == "oni":  # 鬼の移動
+                if keys[pg.K_w]: Player.onirect.y += Player.oni_speed
+                if keys[pg.K_s]: Player.onirect.y -= Player.oni_speed
+                if keys[pg.K_a]: Player.onirect.x -= Player.oni_speed
+                if keys[pg.K_d]: Player.onirect.x += Player.oni_speed
+            elif my_player:  # 逃げる人の移動
+                if keys[pg.K_w]: Player.chararect1.y += Player.player_speed
+                if keys[pg.K_s]: Player.chararect1.y -= Player.player_speed
+                if keys[pg.K_a]: Player.chararect1.x -= Player.player_speed
+                if keys[pg.K_d]: Player.chararect1.x += Player.player_speed
+
+            # 鬼と逃げる人の衝突
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
-            
+                
             if remaining_time <= 0:
                 #時間切れの処理
                 remaining_time = 0
                 print("時間切れ")
                 pg.quit()
                 sys.exit()
+                
             elif Player.chararect1.width ==0 and Player.chararect1.height == 0:
                 #全員捕まった時の処理
                 # remaining_time = 0
                 print("時間切れ")
                 pg.quit()
                 sys.exit()
+
             text_rect = timer_text.get_rect(center=(800 // 2, 50))
             screen.blit(timer_text, text_rect)
             
