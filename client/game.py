@@ -4,7 +4,7 @@ import pygame as pg, sys
 import socket
 import json
 import threading
-from player import Player
+from client.player import Player
 from utils import config
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -215,10 +215,27 @@ class Game:
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
+
+            #プレイヤーの位置更新
+            if remaining_time > 0:
+                GameState.update_player_position(my_player)
+                 # 自分の座標を送信
+                # msg = json.dumps({"player_id": player_id, "x": x, "y": y})
+                # client_socket.sendto(msg.encode(), server_address)
+
+                # サーバーから他プレイヤーの座標を受信
+                # try:
+                #     client_socket.settimeout(0.05)
+                #     data, _ = client_socket.recvfrom(1024)
+                #     players_data = json.loads(data.decode())
+                #     other_players = {p["player_id"]: (p["x"], p["y"]) for p in players_data if p["player_id"] != player_id}
+                # except socket.timeout:
+                #     pass
             # 鬼の勝ちとして結果を表示        
                 self.show_result("鬼")
             # 時間切れ
             if remaining_time <= 0:
+
                 remaining_time = 0
             # 逃げる人の勝ちとして結果を表示
                 self.show_result("逃げる人")
