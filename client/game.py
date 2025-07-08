@@ -131,8 +131,21 @@ class Game:
                 if message.get("type") == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"
+                    self.start_game_time = pg.time.get_ticks()
+                elif message.get("type") == "game_result":
+                    print("[🏁] 結果受信: ", message.get("winner"))
+                    self.show_result(message.get("winner"))
             except Exception as e:
                 print("[受信エラー]", e)
+                
+    def show_result(self, winner):
+        screen.fill((20, 60, 20))
+        result_text = self.font.render(f"{winner} の勝ち！", True, (255, 255, 255))
+        screen.blit(result_text, (100, 250))
+        pg.display.flip()
+        pg.time.delay(5000)
+        pg.quit()
+        sys.exit()
 
     # ゲーム画面の描画
     def draw(self):
@@ -148,7 +161,6 @@ class Game:
         # タイトル画面(仮)
         self.state = "title"  # タイトル状態に設定
         screen.fill((60, 20, 20))
-        # print("ゲーム状態：タイトル")
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
         screen.blit(text,(100,250))
@@ -157,7 +169,6 @@ class Game:
     def draw_result(self):
         self.state = "result"  # 結果状態に設定
         screen.fill((20,60,20))
-        # print("ゲーム状態：試合結果")
         font = pg.font.SysFont(None,40)
         text = font.render("OOteam Victory!", True,(255,255,255))
         screen.blit(text,(100,250))
@@ -204,21 +215,19 @@ class Game:
             if Player.onirect.colliderect(Player.chararect1):
                 Player.chararect1.width = 0
                 Player.chararect1.height = 0
-                
+            # 鬼の勝ちとして結果を表示        
+                self.show_result("鬼")
+            # 時間切れ
             if remaining_time <= 0:
-                #時間切れの処理
                 remaining_time = 0
-                print("時間切れ")
-                pg.quit()
-                sys.exit()
-                
-            elif Player.chararect1.width ==0 and Player.chararect1.height == 0:
-                #全員捕まった時の処理
-                # remaining_time = 0
-                print("時間切れ")
-                pg.quit()
-                sys.exit()
+            # 逃げる人の勝ちとして結果を表示
+                self.show_result("逃げる人")
 
+            # 捕まった後の確認（既に勝敗処理が終わってなかった場合の保険）
+            elif Player.chararect1.width == 0 and Player.chararect1.height == 0:
+                self.show_result("鬼")
+
+            
             text_rect = timer_text.get_rect(center=(800 // 2, 50))
             screen.blit(timer_text, text_rect)
             
