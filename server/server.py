@@ -16,7 +16,7 @@ print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で�
 players = {}
 
 # 必要なプレイヤー数（これで開始）
-REQUIRED_PLAYERS = 1
+REQUIRED_PLAYERS = 1  # 複数人プレイに対応
 
 # ゲーム開始フラグ（繰り返し送信を防ぐ）
 game_started = False
@@ -28,8 +28,8 @@ while True:
         decode_data = data.decode("utf-8")
         print(f"[受信] {addr} から: {decode_data}")
         data_list.append(decode_data)
+        
         # 接続要求の処理
-
         if message.get("type") == "connect_request":
             if addr in players:
                 continue  # すでに登録済みなら無視
@@ -44,6 +44,7 @@ while True:
             }
 
             print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {player_name}")
+            print(f"[現在の接続数] {len(players)} / {REQUIRED_PLAYERS}")
 
             reply = {
                 "type": "connect_ack",
@@ -58,6 +59,7 @@ while True:
                 for p_addr in players:
                     server_socket.sendto(start_msg, p_addr)
                 game_started = True  # ゲーム開始フラグON
+        
         else:
             print(f"[受信] {addr} から: {message}")
 
