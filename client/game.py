@@ -5,16 +5,24 @@ import socket
 import json
 import threading
 from client.player import Player
-from utils import config
+from client.utils import config
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
-
+# デプロイするときにファイルのパスでエラーが出てしまうのでそれを解消する関数
+def resource_path(relative_path):
+    # PyInstallerが一時展開するフォルダを参照
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 pg.init()
 screen = pg.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 WHITE = (255, 255, 255)
 # 背景画像
-haikeimg = pg.image.load("client/assets/images/map.png")
+image_path1 = resource_path("client/assets/images/map.png")
+haikeimg = pg.image.load(image_path1)
 haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 # 制限時間
 total_time = 90
@@ -22,32 +30,42 @@ class Game:
     def __init__(self, role = "runner"):
         pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.settimeout(5)
-        self.font = pg.font.Font(None, 74)
+        self.socket.settimeout(10)
+        # 日本語対応フォントの読み込み
+        self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
+        self.input_text = ""
         self.role = role
-
+        self.running = True
         self.server_ip = ""#後でタイトルかロビー画面で入力できるようにする
         self.server_port = config.SERVER_PORT
         self.server_addr = None
         self.player_id = None
         self.ip_entered = False
-
-        self.font = pg.font.SysFont(None, 48)
+        self.last_send_time = 0
+        self.time_limit = 60000
+        self.send_interval = 100  # ms
+        self.last_state_request_time = pg.time.get_ticks()
+        self.state_request_interval = 200  # ms
+        self.clock = pg.time.Clock()
         self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
-
+        image_path2 = resource_path("client/assets/images/momiji.png")
+        image_path3 = resource_path("client/assets/images/ido_gray.png")
+        image_path4 = resource_path("client/assets/images/iwa_01.png")
+        image_path5 = resource_path("client/assets/images/otera.png")
+        image_path6 = resource_path("client/assets/images/torii01.png")
         # 障害物画像
         self.obstacle_images = {
-            "momiji": pg.transform.scale(pg.image.load("client/assets/images/momiji.png"), (60, 60)),
-            "ido": pg.transform.scale(pg.image.load("client/assets/images/ido_gray.png"), (30, 30)),
-            "iwa": pg.transform.scale(pg.image.load("client/assets/images/iwa_01.png"), (30, 30)),
-            "otera": pg.transform.scale(pg.image.load("client/assets/images/otera.png"), (80, 80)),
-            "torii": pg.transform.scale(pg.image.load("client/assets/images/torii01.png"), (80, 80))
+            "momiji": pg.transform.scale(pg.image.load(image_path2), (60, 60)),
+            "ido": pg.transform.scale(pg.image.load(image_path3), (30, 30)),
+            "iwa": pg.transform.scale(pg.image.load(image_path4), (30, 30)),
+            "otera": pg.transform.scale(pg.image.load(image_path5), (80, 80)),
+            "torii": pg.transform.scale(pg.image.load(image_path6), (80, 80))
         }
 
         # 障害物データ
@@ -64,14 +82,26 @@ class Game:
             {"type": "momiji", "pos": (530, 260)},
             {"type": "momiji", "pos": (530, 340)}
         ]
-
+        
+        self.result_shown = False  # 勝敗表示済みフラグ
+    # プレイヤーと障害物の当たり判定を確認
+    def collides_with_obstacles(self, rect, obstacles):
+        for obs in obstacles:
+            # pos を元に Rect を作成（仮に 50x50 サイズなら）
+            obs_rect = pg.Rect(obs["pos"][0], obs["pos"][1], 50, 50)
+            if rect.colliderect(obs_rect):
+                return True
+        return False
     # IPアドレス入力画面の描画
     def draw_ip_input(self):
         screen.fill((30, 30, 30))
+        
         title = self.font.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
-        input_text = self.font.render(self.server_ip, True, (0, 255, 0))
+        input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
+        
         screen.blit(title, (100, 200))
-        screen.blit(input_text, (100, 300))
+        screen.blit(input_surface, (100, 300))
+        
         pg.display.flip()
 
     # ゲーム開始待機ロビー画面
@@ -86,7 +116,6 @@ class Game:
     def lobby_loop(self):
         while not self.ip_entered:
             self.draw_ip_input()
-
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     pg.quit()
@@ -98,9 +127,11 @@ class Game:
                     elif event.key == pg.K_BACKSPACE:
                         self.server_ip = self.server_ip[:-1]
                     else:
-                        if len(self.server_ip) < 15:
+                        # 数字、ドットなど入力可能な文字のみ
+                        if len(self.server_ip) < 15 and event.unicode.isprintable():
                             self.server_ip += event.unicode
 
+            
     # サーバーへの接続要求を送る
     def send_connect_request(self):
         self.server_addr = (self.server_ip, self.server_port)
@@ -109,13 +140,14 @@ class Game:
             "name": "Player"
             }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
+        print("[送信] connect_request を送信しました")
         try:
             data, _ = self.socket.recvfrom(1024)
             response = json.loads(data.decode())
             if response.get("type") == "connect_ack":
                 self.player_id = response["player_id"]
                 print(f"[接続成功] プレイヤーID: {self.player_id}")
-                self.state = "lobby"  # ← これがないとdraw_lobbyが呼ばれない
+                # self.state = "lobby"  # ← これがないとdraw_lobbyが呼ばれない
             else:
                 print("[警告] サーバーから未知の応答:", response)
                 
@@ -124,48 +156,101 @@ class Game:
 
     # サーバーからのメッセージ受信ループ
     def receive_loop(self):
-        while True:
+        while self.running:
             try:
                 data, _ = self.socket.recvfrom(2048)
                 message = json.loads(data.decode())
-                if message.get("type") == "start_game":
+                now = pg.time.get_ticks()
+
+                msg_type = message.get("type")
+                if msg_type == "connect_ack":
+                    self.player_id = message["player_id"]
+                    print(f"[接続成功] プレイヤーID: {self.player_id}")
+
+                elif msg_type == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"
                     self.start_game_time = pg.time.get_ticks()
-                elif message.get("type") == "game_result":
-                    print("[🏁] 結果受信: ", message.get("winner"))
-                    self.show_result(message.get("winner"))
+                    # self.draw()  # マップ画面に遷移するメソッド
+
+                elif msg_type == "game_state":
+                    self.players = message["players"]
+                    for pid, pdata in self.players.items():
+                        if pid not in self.all_players_on_screen:
+                            p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1])
+                            self.all_players_on_screen[pid] = p
+                        else:
+                            p = self.all_players_on_screen[pid]
+                            if p.role == "oni":
+                                p.onirect.topleft = pdata["pos"]
+                            else:
+                                p.chararect1.topleft = pdata["pos"]
+
+                elif msg_type == "game_result":
+                    winner = message.get("winner")
+                    self.state = "result"
+                    self.show_result(winner)
+
+
+                else:
+                    print(f"[警告] サーバーから未知の応答: {message}")
+
+            except socket.timeout:
+                continue
             except Exception as e:
                 print("[受信エラー]", e)
-                
+
+    # 結果表示
     def show_result(self, winner):
-        screen.fill((20, 60, 20))
-        result_text = self.font.render(f"{winner} の勝ち！", True, (255, 255, 255))
-        screen.blit(result_text, (100, 250))
+        screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
+
+        font = pg.font.SysFont(None, 64)
+        if winner == "oni":
+            text = font.render("鬼の勝利！", True, (255, 0, 0))
+        else:
+            text = font.render("人間の勝利！", True, (0, 255, 0))
+
+        screen.blit(text, (300, 250))  # 適当な位置に表示
         pg.display.flip()
-        pg.time.delay(5000)
-        pg.quit()
-        sys.exit()
+
+        # 画面を3秒表示して終了またはロビーへ
+        pg.time.wait(3000)
+        self.running = False  # 終了したい場合
 
     # ゲーム画面の描画
     def draw(self):
         screen.blit(haikeimg, (0, 0))
+        # 障害物の描画
         for obs in self.obstacles:
             img = self.obstacle_images.get(obs["type"])
             if img:
                 screen.blit(img, obs["pos"])
+        # 全プレイヤーの描画（IDごと）
+        for pid, player in self.all_players_on_screen.items():
+            if player.role == "oni":
+                screen.blit(player.oni_image, player.onirect)
+            else:
+                screen.blit(player.player_image, player.chararect1)
+        # 残り時間の表示
+        if hasattr(self, "start_game_time") and hasattr(self, "time_limit"):
+            elapsed = pg.time.get_ticks() - self.start_game_time
+            remaining = max(0, (self.time_limit - elapsed) // 1000)
+            font = pg.font.SysFont(None, 36)
+            timer_text = font.render(f"残り時間: {remaining} 秒", True, (255, 255, 255))
+            screen.blit(timer_text, (10, 10))
         pg.display.flip()
 
-
+    # タイトルの表示
     def draw_title(self):
         # タイトル画面(仮)
+        self.handle_common_events()
         self.state = "title"  # タイトル状態に設定
         screen.fill((60, 20, 20))
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
         screen.blit(text,(100,250))
         pg.display.flip()
-    
+    # 結果表示(おそらく現在使われていない)
     def draw_result(self):
         self.state = "result"  # 結果状態に設定
         screen.fill((20,60,20))
@@ -173,83 +258,139 @@ class Game:
         text = font.render("OOteam Victory!", True,(255,255,255))
         screen.blit(text,(100,250))
         pg.display.flip()
+    # キーボード操作など
+    def handle_player_movement(self):
+        keys = pg.key.get_pressed()
+        my_player = self.all_players_on_screen.get(self.player_id)
+        if not my_player:
+            return
 
+        moved = False
+        speed = Player.oni_speed if my_player.role == "oni" else Player.player_speed
+        rect = my_player.onirect if my_player.role == "oni" else my_player.chararect1
+
+        # 現在の座標を保存
+        original_pos = rect.topleft
+
+        # 新しい座標を計算
+        if keys[pg.K_w]:
+            rect.y -= speed
+            moved = True
+        if keys[pg.K_s]:
+            rect.y += speed
+            moved = True
+        if keys[pg.K_a]:
+            rect.x -= speed
+            moved = True
+        if keys[pg.K_d]:
+            rect.x += speed
+            moved = True
+        # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
+        if self.state == "playing":
+            my_player = self.all_players_on_screen.get(self.player_id)
+            if my_player and my_player.role == "oni":
+                oni_rect = my_player.onirect
+
+                for pid, other_player in self.all_players_on_screen.items():
+                    if pid == self.player_id:
+                        continue  # 自分自身はスキップ
+                    if other_player.role == "runner":
+                        runner_rect = other_player.chararect1
+                        if oni_rect.colliderect(runner_rect):
+                            print("👹 鬼がランナーを捕まえた！")
+
+                            self.state = "result"
+                            self.show_result("oni")
+                            msg = {"type": "game_result", "winner": "oni"}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                            return  # 勝利後は移動処理を終了
+        # 当たり判定チェック
+        if moved and self.collides_with_obstacles(rect, self.obstacles):
+            # 衝突していたら元の位置に戻す
+            rect.topleft = original_pos
+            moved = False  # 移動キャンセル
+
+        if moved:
+            pos = [rect.x, rect.y]
+            update_msg = {
+                "type": "position_update",
+                "player_id": self.player_id,
+                "pos": pos
+            }
+            try:
+                self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
+                print(f"[送信] 新しい位置: {pos}")
+            except Exception as e:
+                print("[送信エラー]", e)
+    # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
+    def handle_common_events(self):
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                pg.quit()
+                sys.exit()
+    # 座標の送信
+    def send_position_update(self, pos):
+        try:
+            update_msg = {
+                "type": "position_update",
+                "player_id": self.player_id,
+                "pos": pos
+            }
+            self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
+        except Exception as e:
+            print("[位置送信エラー]", e)
+    # すべてのプレイヤーの座標更新
+    def update_all_players(self):
+        self.all_players_on_screen.clear()
+        for pid, pdata in self.players.items():
+            role = pdata.get("role", "runner")
+            x, y = pdata.get("pos", [100, 100])
+            player = Player(role, x, y)
+            self.all_players_on_screen[pid] = player
+    # WASDのどのキーが押されたか送信
+    def send_move_command(self, direction):
+        msg = {
+            "type": "move",
+            "direction": direction  # e.g. "up", "down", "left", "right"
+        }
+        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+    # メインループ
     def run(self):
-        self.lobby_loop()
+        while not self.ip_entered:
+            self.lobby_loop()  # IP入力画面のループ
+        self.state = "lobby"
 
-        clock = pg.time.Clock()
-        while True:
-            if self.state == "lobby":
-                self.draw_lobby()
-            else:
-                self.draw()
+        last_send_time = pg.time.get_ticks()
+        send_interval = 100
+
+        while self.running:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
-                    pg.quit()
-                    sys.exit()
-            
+                    self.running = False
+
             current_time = pg.time.get_ticks()
-            elapsed_time = (current_time - self.start_game_time) / 1000
-            remaining_time = total_time - elapsed_time
-            display_time = int(remaining_time)
-            timer_text = self.font.render(f"Time: {display_time}", True, WHITE)
-            
-            my_player = self.all_players_on_screen.get(self.player_id)
-            # キー入力チェック(キー押しっぱなし検出)
-            keys = pg.key.get_pressed()
 
-            # メイン処理
-            my_player = self.all_players_on_screen.get(self.player_id)
-            if my_player and my_player.role == "oni":  # 鬼の移動
-                if keys[pg.K_w]: Player.onirect.y += Player.oni_speed
-                if keys[pg.K_s]: Player.onirect.y -= Player.oni_speed
-                if keys[pg.K_a]: Player.onirect.x -= Player.oni_speed
-                if keys[pg.K_d]: Player.onirect.x += Player.oni_speed
-            elif my_player:  # 逃げる人の移動
-                if keys[pg.K_w]: Player.chararect1.y += Player.player_speed
-                if keys[pg.K_s]: Player.chararect1.y -= Player.player_speed
-                if keys[pg.K_a]: Player.chararect1.x -= Player.player_speed
-                if keys[pg.K_d]: Player.chararect1.x += Player.player_speed
+            if self.state == "playing" and current_time - last_send_time > send_interval:
+                try:
+                    msg = {"type": "state_request"}
+                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    last_send_time = current_time
+                except Exception as e:
+                    print("[送信エラー]", e)
 
-            # 鬼と逃げる人の衝突
-            if Player.onirect.colliderect(Player.chararect1):
-                Player.chararect1.width = 0
-                Player.chararect1.height = 0
+            if self.state == "playing":
+                self.handle_player_movement()
+                self.draw()
+                elapsed = pg.time.get_ticks() - self.start_game_time
+                if elapsed >= self.time_limit:
+                    self.state = "result"
+                    self.show_result("runner")
+                    msg = {"type": "game_result", "winner": "runner"}
+                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+            elif self.state == "lobby":
+                self.draw_lobby()
 
-            #プレイヤーの位置更新
-            if remaining_time > 0:
-                GameState.update_player_position(my_player)
-                 # 自分の座標を送信
-                # msg = json.dumps({"player_id": player_id, "x": x, "y": y})
-                # client_socket.sendto(msg.encode(), server_address)
-
-                # サーバーから他プレイヤーの座標を受信
-                # try:
-                #     client_socket.settimeout(0.05)
-                #     data, _ = client_socket.recvfrom(1024)
-                #     players_data = json.loads(data.decode())
-                #     other_players = {p["player_id"]: (p["x"], p["y"]) for p in players_data if p["player_id"] != player_id}
-                # except socket.timeout:
-                #     pass
-            # 鬼の勝ちとして結果を表示        
-                self.show_result("鬼")
-            # 時間切れ
-            if remaining_time <= 0:
-
-                remaining_time = 0
-            # 逃げる人の勝ちとして結果を表示
-                self.show_result("逃げる人")
-
-            # 捕まった後の確認（既に勝敗処理が終わってなかった場合の保険）
-            elif Player.chararect1.width == 0 and Player.chararect1.height == 0:
-                self.show_result("鬼")
-
-            
-            text_rect = timer_text.get_rect(center=(800 // 2, 50))
-            screen.blit(timer_text, text_rect)
-            
-            pg.display.flip() # 画面更新
-            clock.tick(60) # FPS 60 に制限
+            self.clock.tick(60)
             
 if __name__ == "__main__":
     game = Game()

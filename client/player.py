@@ -1,29 +1,31 @@
 # player.py
-#プレイヤーの動きと表示を管理
-import pygame as pg, sys
-import uuid
-from utils import config
-# プレイヤーの画像
+# プレイヤーの動きと表示を管理
+import pygame as pg
+import sys
+import os
+
 class Player:
-    # images = {
-    #      "runner1":"client/assets/images/player1.png",
-    #      "runner2":"client/assets/images/player2.png",
-    #      "runner3":"client/assets/images/player3.png",
-    #      "oni":"client/assets/images/oni.png"
-    #  }
-    # images_rect = (50, 50)
-    charaimg1 = pg.image.load("client/assets/images/player1.png")
-    charaimg1 = pg.transform.scale(charaimg1, (50, 50))
-    chararect1 = pg.Rect(800, 0, 50, 50)
-    charaimg2 = pg.image.load("client/assets/images/player2.png")
-    charaimg2 = pg.transform.scale(charaimg2, (50, 50))
-    chararect2 = pg.Rect(800, 600, 50, 50)
-    charaimg3 = pg.image.load("client/assets/images/player3.png")
-    charaimg3 = pg.transform.scale(charaimg3, (50, 50))
-    chararect3 = pg.Rect(0, 600, 50, 50)
-    oni = pg.image.load("client/assets/images/oni.png")
-    oni = pg.transform.scale(oni, (50, 50))
-    onirect = pg.Rect(0, 0, 50, 50)
-    # 速度
     player_speed = 5
     oni_speed = 6
+
+    def __init__(self, role="runner", x=100, y=100):
+        self.role = role
+        self.x, self.y = x, y
+        # デプロイ時にパスのエラーを解消するために使った関数
+        def resource_path(relative_path):
+            try:
+                base_path = sys._MEIPASS
+            except Exception:
+                base_path = os.path.abspath(".")
+            return os.path.join(base_path, relative_path)
+
+        if role == "oni":
+            charimage_path = resource_path("client/assets/images/oni.png")
+            self.oni_image = pg.image.load(charimage_path)
+            self.oni_image = pg.transform.scale(self.oni_image, (40, 40))
+            self.onirect = self.oni_image.get_rect(topleft=(x, y))
+        else:
+            charimage_path = resource_path("client/assets/images/player1.png")
+            self.player_image = pg.image.load(charimage_path)
+            self.player_image = pg.transform.scale(self.player_image, (48, 48))
+            self.chararect1 = self.player_image.get_rect(topleft=(x, y))
