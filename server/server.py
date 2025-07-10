@@ -1,67 +1,158 @@
-# server/server.py
 import socket
 import json
-import uuid  # プレイヤーIDを一意に発行するため
-
-from server.utils import config as server_config
-
-data_list = [] #受信したデータを記憶するリスト
-
-# UDPソケット作成
+import uuid
+import threading
+import time
+import pygame as pg
+# サーバーソケット初期化
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_socket.bind((server_config.HOST, server_config.PORT))
-print(f"🟢 サーバー起動: {server_config.HOST}:{server_config.PORT} で待機中...")
+server_socket.bind(("0.0.0.0", 5000))
+server_socket.settimeout(0.5)
 
-# プレイヤー情報を記録する辞書 {addr: {...}}
 players = {}
-
-# 必要なプレイヤー数（これで開始）
-REQUIRED_PLAYERS = 1  # 複数人プレイに対応
-
-# ゲーム開始フラグ（繰り返し送信を防ぐ）
+REQUIRED_PLAYERS = 2
 game_started = False
+print("サーバー起動: 0.0.0.0:5000 で待機中...")
+# プレイヤーをアドレスで検索
+def find_player_by_addr(addr):
+    for pid, player in players.items():
+        if player["addr"] == addr:
+            return player
+    return None
+# 押されたキー(WASD)によって座標の変更
+def calculate_new_position(pos, direction, step=5):
+    x, y = pos
+    if direction == "up":
+        y -= step
+    elif direction == "down":
+        y += step
+    elif direction == "left":
+        x -= step
+    elif direction == "right":
+        x += step
+    return [x, y]
+# プレイヤーの初期位置設定
+def assign_initial_positions():
+    positions_runner = [
+        [0, 500],    # 左下
+        [920, 0],    # 右上
+        [920, 600],  # 右下
+    ]
+    positions_oni = [
+        [0, 100],
+    ]
 
-while True:
-    try:
-        data, addr = server_socket.recvfrom(1024)
-        message = json.loads(data.decode())
-        decode_data = data.decode("utf-8")
-        print(f"[受信] {addr} から: {decode_data}")
-        data_list.append(decode_data)
-        
-        # 接続要求の処理
-        if message.get("type") == "connect_request":
-            if addr in players:
-                continue  # すでに登録済みなら無視
-
-            player_name = message.get("name", "Unknown")
-            player_id = str(uuid.uuid4())[:8]  # 短い一意ID
-
-            players[addr] = {
-                "id": player_id,
-                "name": player_name,
-                "pos": (0, 0),
-            }
-
-            print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {player_name}")
-            print(f"[現在の接続数] {len(players)} / {REQUIRED_PLAYERS}")
-
-            reply = {
-                "type": "connect_ack",
-                "player_id": player_id
-            }
-            server_socket.sendto(json.dumps(reply).encode(), addr)
-
-            # ★ プレイヤー人数が揃ったらゲーム開始シグナルを送る
-            if len(players) >= REQUIRED_PLAYERS and not game_started:
-                print("✅ プレイヤーが揃いました。ゲームを開始します。")
-                start_msg = json.dumps({"type": "start_game"}).encode()
-                for p_addr in players:
-                    server_socket.sendto(start_msg, p_addr)
-                game_started = True  # ゲーム開始フラグON
-        
+    runner_index = 0
+    for pid, p in players.items():
+        if p["role"] == "oni":
+            p["pos"] = positions_oni[0]  # 鬼は固定位置
         else:
-            print(f"[受信] {addr} から: {message}")
+            # ランナーは順番に初期位置を割り当てる
+            if runner_index < len(positions_runner):
+                p["pos"] = positions_runner[runner_index]
+            else:
+                # 位置が足りなければ適当に初期化（左下など）
+                p["pos"] = [0, 600]
+            runner_index += 1
+# ✅ クライアントからのメッセージ受信ループ
+def receive_loop():
+    while True:
+        try:
+            data, addr = server_socket.recvfrom(1024)
+            message = json.loads(data.decode())
+            # ここでmessageだけ渡す
+            threading.Thread(target=process_message, args=(message, addr)).start()
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"[受信エラー] {e}")
 
-    except Exception as e:
-        print(f"[エラー] {e}")
+# ✅ 個別のクライアントメッセージ処理
+def process_message(message, addr):
+    global game_started
+    msg_type = message.get("type")
+    
+    if msg_type == "connect_request":
+        player_id = str(uuid.uuid4())
+        name = message.get("name", "Player")
+        players[player_id] = {
+            "id": player_id,
+            "name": name,
+            "pos": [0, 0],
+            "addr": addr,
+            "role": None
+        }
+
+        print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {name}")
+
+        ack = {"type": "connect_ack", "player_id": player_id}
+        server_socket.sendto(json.dumps(ack).encode(), addr)
+
+        # ✅ プレイヤー数が揃ったら、ゲームを開始
+        if len(players) >= REQUIRED_PLAYERS and not game_started:
+            assign_roles()
+            start_game()
+
+    elif msg_type == "state_request":
+        game_state = {
+            "type": "game_state",
+            "players": {
+                pid: {
+                    "id": pid,
+                    "name": p["name"],
+                    "pos": p["pos"],
+                    "role": p["role"]
+                } for pid, p in players.items()
+            }
+        }
+        server_socket.sendto(json.dumps(game_state).encode(), addr)
+    elif msg_type == "start_game":
+        # クライアントから受信することは想定しないが、念のためログだけ
+        print("[受信] クライアントからstart_gameメッセージが来ました。無視します。")
+    elif msg_type == "position_update":
+        player_id = message.get("player_id")
+        new_pos = message.get("pos")
+        if player_id in players:
+            players[player_id]["pos"] = new_pos
+            print(f"[更新] {player_id} の位置を {new_pos} に更新")
+        else:
+            print(f"[警告] {player_id} は登録されていません")
+    elif msg_type == "game_result":
+        winner = message.get("winner", "unknown")
+        print(f"[結果受信] 勝者: {winner}")
+
+        result_msg = {
+            "type": "game_result",
+            "winner": winner
+        }
+        for p in players.values():
+            try:
+                server_socket.sendto(json.dumps(result_msg).encode(), p["addr"])
+            except Exception as e:
+                print(f"[送信エラー] {p['id']}: {e}")
+
+    else:
+        print(f"[警告] サーバーから未知の応答: {message}")
+# プレイヤーの役割の割り振り
+def assign_roles():
+    player_ids = list(players.keys())
+    oni_id = player_ids[0]  # 先頭を鬼にする（適宜ランダムでも可）
+
+    for pid in player_ids:
+        if pid == oni_id:
+            players[pid]["role"] = "oni"
+        else:
+            players[pid]["role"] = "runner"
+# ゲーム開始
+def start_game():
+    global game_started
+    game_started = True
+    assign_initial_positions()  # ここで初期位置を決める
+    for pid in players:
+        addr = players[pid].get("addr")  # addr を保存していない場合は対応が必要
+        if addr:
+            start_msg = {"type": "start_game"}
+            server_socket.sendto(json.dumps(start_msg).encode(), addr)
+    print("✅ プレイヤーが揃いました。ゲームを開始します。")
+# 🔄 受信ループ開始
+receive_loop()
