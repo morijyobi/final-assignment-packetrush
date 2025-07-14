@@ -36,6 +36,7 @@ class Game:
         self.jpfont = pg.font.Font(self.font_path, 36)
         self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
+        self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -271,6 +272,9 @@ class Game:
         screen.fill((60, 20, 20))
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
+        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
+        self.help_button_rect = self.help_button_img.get_rect((650, 0))
+        screen.blit(self.help_button_img, self.help_button_rect)
         screen.blit(text,(100,250))
         pg.display.flip()
     # 結果表示(おそらく現在使われていない)
