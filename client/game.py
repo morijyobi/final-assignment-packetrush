@@ -32,6 +32,10 @@ class Game:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(10)
         # 日本語対応フォントの読み込み
+        self.font_path = resource_path("client/assets/fonts/NotoSansJP-Regular.ttf")
+        self.jpfont = pg.font.Font(self.font_path, 36)
+        self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
+        self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -96,7 +100,7 @@ class Game:
     def draw_ip_input(self):
         screen.fill((30, 30, 30))
         
-        title = self.font.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
+        title = self.jpfont.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
         input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
         
         screen.blit(title, (100, 200))
@@ -108,7 +112,7 @@ class Game:
     def draw_lobby(self):
         screen.fill((20, 20, 60))
         font = pg.font.SysFont(None, 40)
-        text = font.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
         screen.blit(text, (100, 250))
         pg.display.flip()
 
@@ -202,21 +206,40 @@ class Game:
 
     # 結果表示
     def show_result(self, winner):
-        screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
+        # screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
 
         font = pg.font.SysFont(None, 64)
         if winner == "oni":
-            text = font.render("鬼の勝利！", True, (255, 0, 0))
+            text = self.jpfont.render("鬼の勝利！", True, (255, 0, 0))
         else:
-            text = font.render("人間の勝利！", True, (0, 255, 0))
+            text = self.jpfont.render("人間の勝利！", True, (0, 255, 0))
 
-        screen.blit(text, (300, 250))  # 適当な位置に表示
+        screen.blit(text, (320, 200))  # 適当な位置に表示
+        # ボタン設定
+        # スケーリング
+        self.exit_button_img = pg.transform.scale(self.exit_button_img, (150, 80))
+        self.retry_button_img = pg.transform.scale(self.retry_button_img, (150, 80))
+        # ボタンの Rect を作成して位置を指定（画面中央あたり）
+        self.exit_button_rect = self.exit_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 350))
+        self.retry_button_rect = self.retry_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 450))
+        # ボタン画像の表示
+        screen.blit(self.exit_button_img, self.exit_button_rect)
+        screen.blit(self.retry_button_img, self.retry_button_rect)
         pg.display.flip()
-
-        # 画面を3秒表示して終了またはロビーへ
-        pg.time.wait(3000)
-        self.running = False  # 終了したい場合
-
+         # ボタン待ちループ
+        waiting = True
+        while waiting:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                elif event.type == pg.MOUSEBUTTONDOWN:
+                    if self.exit_button_rect.collidepoint(event.pos):
+                        pg.quit()
+                        sys.exit()
+                    elif self.retry_button_rect.collidepoint(event.pos):
+                        waiting = False  # 再スタート用に break
+            self.clock.tick(60)
     # ゲーム画面の描画
     def draw(self):
         screen.blit(haikeimg, (0, 0))
@@ -236,7 +259,7 @@ class Game:
             elapsed = pg.time.get_ticks() - self.start_game_time
             remaining = max(0, (self.time_limit - elapsed) // 1000)
             font = pg.font.SysFont(None, 36)
-            timer_text = font.render(f"残り時間: {remaining} 秒", True, (255, 255, 255))
+            timer_text = self.jpfont.render(f"残り時間: {remaining} 秒", True, (255, 255, 255))
             screen.blit(timer_text, (10, 10))
         pg.display.flip()
 
