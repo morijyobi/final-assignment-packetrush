@@ -220,15 +220,12 @@ class Game:
         # スケーリング
         self.exit_button_img = pg.transform.scale(self.exit_button_img, (150, 80))
         self.retry_button_img = pg.transform.scale(self.retry_button_img, (150, 80))
-        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         # ボタンの Rect を作成して位置を指定（画面中央あたり）
         self.exit_button_rect = self.exit_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 350))
         self.retry_button_rect = self.retry_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 450))
-        self.help_button_rect = self.help_button_img.get_rect((650, 0))
         # ボタン画像の表示
         screen.blit(self.exit_button_img, self.exit_button_rect)
         screen.blit(self.retry_button_img, self.retry_button_rect)
-        screen.blit(self.help_button_img, self.help_button_rect)
         pg.display.flip()
          # ボタン待ちループ
         waiting = True
@@ -275,6 +272,9 @@ class Game:
         screen.fill((60, 20, 20))
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
+        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
+        self.help_button_rect = self.help_button_img.get_rect((650, 0))
+        screen.blit(self.help_button_img, self.help_button_rect)
         screen.blit(text,(100,250))
         pg.display.flip()
     # 結果表示(おそらく現在使われていない)
