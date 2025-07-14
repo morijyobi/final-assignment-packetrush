@@ -228,6 +228,7 @@ class Game:
         # ボタン画像の表示
         screen.blit(self.exit_button_img, self.exit_button_rect)
         screen.blit(self.retry_button_img, self.retry_button_rect)
+        screen.blit(self.help_button_img, self.help_button_rect)
         pg.display.flip()
          # ボタン待ちループ
         waiting = True
