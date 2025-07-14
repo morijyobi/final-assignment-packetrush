@@ -36,6 +36,7 @@ class Game:
         self.jpfont = pg.font.Font(self.font_path, 36)
         self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
+        self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -219,9 +220,11 @@ class Game:
         # スケーリング
         self.exit_button_img = pg.transform.scale(self.exit_button_img, (150, 80))
         self.retry_button_img = pg.transform.scale(self.retry_button_img, (150, 80))
+        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         # ボタンの Rect を作成して位置を指定（画面中央あたり）
         self.exit_button_rect = self.exit_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 350))
         self.retry_button_rect = self.retry_button_img.get_rect(center=(config.SCREEN_WIDTH // 2, 450))
+        self.help_button_rect = self.help_button_img.get_rect((650, 0))
         # ボタン画像の表示
         screen.blit(self.exit_button_img, self.exit_button_rect)
         screen.blit(self.retry_button_img, self.retry_button_rect)
