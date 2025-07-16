@@ -7,6 +7,8 @@ import threading
 from client.player import Player
 from client.utils import config
 import os
+import tkinter as tk
+from tkinter import messagebox
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
 # デプロイするときにファイルのパスでエラーが出てしまうのでそれを解消する関数
@@ -89,6 +91,13 @@ class Game:
         ]
         
         self.result_shown = False  # 勝敗表示済みフラグ
+    def show_help_message(self):
+        # tkinterのルートウィンドウを非表示で作成
+        root = tk.Tk()
+        root.withdraw() # メインウィンドウを表示しないようにする
+        # ヘルプメッセージ表示
+        messagebox.showinfo("操作方法","WASDで移動します。\n鬼は人間を追いかけてください!\n人間は制限時間まで逃げてください。")
+        root.destroy() # 使い終わったら破棄
     # プレイヤーと障害物の当たり判定を確認
     def collides_with_obstacles(self, rect, obstacles):
         for obs in obstacles:
@@ -106,7 +115,9 @@ class Game:
         
         screen.blit(title, (100, 200))
         screen.blit(input_surface, (100, 300))
-        
+        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
+        self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
+        screen.blit(self.help_button_img, self.help_button_rect)
         pg.display.flip()
 
     # ゲーム開始待機ロビー画面
@@ -125,6 +136,9 @@ class Game:
                 if event.type == pg.QUIT:
                     pg.quit()
                     sys.exit()
+                elif event.type == pg.MOUSEBUTTONDOWN:
+                    if self.help_button_rect.collidepoint(event.pos):
+                        self.show_help_message()
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_RETURN:
                         self.ip_entered = True
@@ -272,9 +286,7 @@ class Game:
         screen.fill((60, 20, 20))
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
-        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
-        self.help_button_rect = self.help_button_img.get_rect((650, 0))
-        screen.blit(self.help_button_img, self.help_button_rect)
+        
         screen.blit(text,(100,250))
         pg.display.flip()
     # 結果表示(おそらく現在使われていない)
@@ -394,7 +406,6 @@ class Game:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
-
             current_time = pg.time.get_ticks()
 
             if self.state == "playing" and current_time - last_send_time > send_interval:
