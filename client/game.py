@@ -24,6 +24,9 @@ WHITE = (255, 255, 255)
 image_path1 = resource_path("client/assets/images/map.png")
 haikeimg = pg.image.load(image_path1)
 haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+lobby_path = resource_path("client/assets/images/lobby.png")
+lobbyimg = pg.image.load(lobby_path)
+lobbyimg = pg.transform.scale(lobbyimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 # 制限時間
 total_time = 90
 class Game:
@@ -111,9 +114,14 @@ class Game:
 
     # ゲーム開始待機ロビー画面
     def draw_lobby(self):
-        screen.fill((20, 20, 60))
+        screen.blit(lobbyimg, (0, 0))
         font = pg.font.SysFont(None, 40)
-        text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        self.socket.sendto(b"get_player_count", self.server_addr)
+        data,addr = self.socket.recvfrom(1024)
+        p_count = json.loads(data.decode())
+        max_players = 4  # 最大プレイヤー数
+        # text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        text = self.jpfont.render(f"待機:{p_count}/{max_players}", True, (255, 255, 255))
         screen.blit(text, (100, 250))
         pg.display.flip()
 
