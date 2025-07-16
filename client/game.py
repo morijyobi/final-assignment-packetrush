@@ -29,6 +29,9 @@ haikeimg = pg.transform.scale(haikeimg, (config.SCREEN_WIDTH, config.SCREEN_HEIG
 lobby_path = resource_path("client/assets/images/lobby.png")
 lobbyimg = pg.image.load(lobby_path)
 lobbyimg = pg.transform.scale(lobbyimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+title_path = resource_path("client/assets/images/onitop.png")
+titleimg = pg.image.load(title_path)
+titleimg = pg.transform.scale(titleimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
 # 制限時間
 total_time = 90
 class Game:
@@ -115,7 +118,7 @@ class Game:
         
         title = self.jpfont.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
         input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
-        
+        screen.blit(titleimg, (0, 0))
         screen.blit(title, (100, 200))
         screen.blit(input_surface, (100, 300))
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
@@ -128,12 +131,12 @@ class Game:
         screen.blit(lobbyimg, (0, 0))
         font = pg.font.SysFont(None, 40)
         self.socket.sendto(b"get_player_count", self.server_addr)
-        data,addr = self.socket.recvfrom(1024)
-        p_count = json.loads(data.decode())
-        max_players = 4  # 最大プレイヤー数
-        # text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
-        text = self.jpfont.render(f"待機:{p_count}/{max_players}", True, (255, 255, 255))
-        screen.blit(text, (100, 250))
+        # data,addr = self.socket.recvfrom(1024)
+        # p_count = json.loads(data.decode())
+        # max_players = 4  # 最大プレイヤー数
+        # # text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
+        # text = self.jpfont.render(f"待機:{p_count}/{max_players}", True, (255, 255, 255))
+        # screen.blit(text, (100, 250))
         pg.display.flip()
 
     # ロビーでのIP入力ループ
@@ -291,6 +294,7 @@ class Game:
         # タイトル画面(仮)
         self.handle_common_events()
         self.state = "title"  # タイトル状態に設定
+        screen.blit(titleimg, (0, 0))
         screen.fill((60, 20, 20))
         font = pg.font.SysFont(None, 40)
         text = font.render("ONI LINK", True, (255,255,255))
