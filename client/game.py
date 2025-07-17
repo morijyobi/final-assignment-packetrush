@@ -32,6 +32,7 @@ lobbyimg = pg.transform.scale(lobbyimg, (config.SCREEN_WIDTH, config.SCREEN_HEIG
 title_path = resource_path("client/assets/images/onitop.png")
 titleimg = pg.image.load(title_path)
 titleimg = pg.transform.scale(titleimg, (config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+
 # 制限時間
 total_time = 90
 class Game:
@@ -45,6 +46,7 @@ class Game:
         self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
         self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
+        self.title_button_img = pg.image.load(resource_path("client/assets/images/titlebutton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -124,6 +126,9 @@ class Game:
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
         screen.blit(self.help_button_img, self.help_button_rect)
+        self.title_button_img = pg.transform.scale(self.title_button_img, (250, 100))
+        self.title_button_rect = self.title_button_img.get_rect(topleft=(300, 400))
+        screen.blit(self.title_button_img, self.title_button_rect)
         pg.display.flip()
 
     # ゲーム開始待機ロビー画面
@@ -150,6 +155,9 @@ class Game:
                 elif event.type == pg.MOUSEBUTTONDOWN:
                     if self.help_button_rect.collidepoint(event.pos):
                         self.show_help_message()
+                    if self.title_button_rect.collidepoint(event.pos):
+                        self.ip_entered = True
+                        self.send_connect_request()
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_RETURN:
                         self.ip_entered = True
