@@ -84,6 +84,7 @@ def process_message(message, addr):
         }
 
         print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {name}")
+
         
         ack = {"type": "connect_ack", "player_id": player_id}
         server_socket.sendto(json.dumps(ack).encode(), addr)
