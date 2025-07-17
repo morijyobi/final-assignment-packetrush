@@ -35,7 +35,7 @@ class Game:
     def __init__(self, role = "runner"):
         pg.font.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.settimeout(10)
+        self.socket.settimeout(0.1)
         # 日本語対応フォントの読み込み
         self.font_path = resource_path("client/assets/fonts/NotoSansJP-Regular.ttf")
         self.jpfont = pg.font.Font(self.font_path, 36)
@@ -61,6 +61,7 @@ class Game:
         self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
+        self.current_player_count = 0 #プレイヤー人数
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -126,13 +127,14 @@ class Game:
     # ゲーム開始待機ロビー画面
     def draw_lobby(self):
         screen.blit(lobbyimg, (0, 0))
-        font = pg.font.SysFont(None, 40)
+        # font = pg.font.SysFont(None, 40)
         self.socket.sendto(b"get_player_count", self.server_addr)
-        data,addr = self.socket.recvfrom(1024)
-        p_count = json.loads(data.decode())
+        # data,addr = self.socket.recvfrom(1024)
+        # received_data = json.loads(data.decode())
+        # p_count = received_data.get("player_count", 0)
         max_players = 4  # 最大プレイヤー数
-        # text = self.jpfont.render("ロビー：ゲーム開始を待っています...", True, (255, 255, 255))
-        text = self.jpfont.render(f"待機:{p_count}/{max_players}", True, (255, 255, 255))
+        
+        text = self.jpfont.render(f"待機:{self.current_player_count}/{max_players}", True, (255, 255, 255))
         screen.blit(text, (100, 250))
         pg.display.flip()
 
@@ -168,18 +170,18 @@ class Game:
             }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
         print("[送信] connect_request を送信しました")
-        try:
-            data, _ = self.socket.recvfrom(1024)
-            response = json.loads(data.decode())
-            if response.get("type") == "connect_ack":
-                self.player_id = response["player_id"]
-                print(f"[接続成功] プレイヤーID: {self.player_id}")
-                # self.state = "lobby"  # ← これがないとdraw_lobbyが呼ばれない
-            else:
-                print("[警告] サーバーから未知の応答:", response)
+        # try:
+        #     data, _ = self.socket.recvfrom(1024)
+        #     response = json.loads(data.decode())
+        #     if response.get("type") == "connect_ack":
+        #         self.player_id = response["player_id"]
+        #         print(f"[接続成功] プレイヤーID: {self.player_id}")
+        #         # self.state = "lobby"  # ← これがないとdraw_lobbyが呼ばれない
+        #     else:
+        #         print("[警告] サーバーから未知の応答:", response)
                 
-        except socket.timeout:
-            print("[接続失敗] サーバーから応答なし")
+        # except socket.timeout:
+        #     print("[接続失敗] サーバーから応答なし")
 
     # サーバーからのメッセージ受信ループ
     def receive_loop(self):
@@ -193,11 +195,15 @@ class Game:
                 if msg_type == "connect_ack":
                     self.player_id = message["player_id"]
                     print(f"[接続成功] プレイヤーID: {self.player_id}")
+                    
+                elif msg_type == "player_count_update":
+                    self.current_player_count = message.get("player_count", 0)
 
                 elif msg_type == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"
                     self.start_game_time = pg.time.get_ticks()
+                    #self.draw_lobby() #ロビー画面に移動
                     # self.draw()  # マップ画面に遷移するメソッド
 
                 elif msg_type == "game_state":
@@ -405,7 +411,7 @@ class Game:
     def run(self):
         while not self.ip_entered:
             self.lobby_loop()  # IP入力画面のループ
-        self.state = "lobby"
+        # self.state = "lobby"
 
         last_send_time = pg.time.get_ticks()
         send_interval = 100
@@ -414,9 +420,20 @@ class Game:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
+                    
             current_time = pg.time.get_ticks()
-
-            if self.state == "playing" and current_time - last_send_time > send_interval:
+            
+            if self.state == "lobby":
+                self.draw_lobby() # ロビー画面に移動
+                # プレイヤー数更新要求を定期的に送信
+                if current_time - self.last_state_request_time > self.state_request_interval:
+                    try:
+                        msg = {"type": "get_player_count_request"}
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                        self.last_state_request_time = current_time
+                    except Exception as e:
+                        print(f"[送信エラー] ロビー更新要求: {e}")
+            elif self.state == "playing" and current_time - last_send_time > send_interval:
                 try:
                     msg = {"type": "state_request"}
                     self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
@@ -433,8 +450,8 @@ class Game:
                     self.show_result("runner")
                     msg = {"type": "game_result", "winner": "runner"}
                     self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-            elif self.state == "lobby":
-                self.draw_lobby()
+            elif self.state == "result":
+                pass
 
             self.clock.tick(60)
             
