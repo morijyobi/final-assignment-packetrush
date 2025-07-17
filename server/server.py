@@ -84,8 +84,6 @@ def process_message(message, addr):
         }
 
         print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {name}")
-        # p_count = len(players)
-        # server_socket.sendto(json.dumps(p_count).encode(), addr)
         
         ack = {"type": "connect_ack", "player_id": player_id}
         server_socket.sendto(json.dumps(ack).encode(), addr)
@@ -93,7 +91,13 @@ def process_message(message, addr):
         if len(players) >= REQUIRED_PLAYERS and not game_started:
             assign_roles()
             start_game()
-
+    
+    elif msg_type == "get_player_count_request":
+        # 参加人数を数える
+        p_count = len(players)
+        response_data = {"type":"player_count_update", "player_count" : p_count}
+        server_socket.sendto(json.dumps(response_data).encode(), addr)
+        
     elif msg_type == "state_request":
         game_state = {
             "type": "game_state",
