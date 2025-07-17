@@ -384,6 +384,19 @@ class Game:
         if keys[pg.K_d]:
             rect.x += speed
             moved = True
+        # 画面外に行けないようにする
+        if rect.y < 0:
+            rect.y = 0
+            moved = True
+        if rect.y > config.SCREEN_HEIGHT - rect.height:
+            rect.y = config.SCREEN_HEIGHT - rect.height
+            moved = True
+        if rect.x < 0:
+            rect.x = 0
+            moved = True
+        if rect.x > config.SCREEN_WIDTH - rect.width:
+            rect.x = config.SCREEN_WIDTH - rect.width
+            moved = True
         # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
         if self.state == "playing":
             my_player = self.all_players_on_screen.get(self.player_id)
