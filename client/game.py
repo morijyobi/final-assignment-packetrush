@@ -43,6 +43,9 @@ class Game:
         # 日本語対応フォントの読み込み
         self.font_path = resource_path("client/assets/fonts/NotoSansJP-Regular.ttf")
         self.jpfont = pg.font.Font(self.font_path, 36)
+        self.player_name_font = pg.font.Font(self.font_path, 18)
+        self.player_name = ""
+        self.input_mode = "ip" # ipまたはnameのどちらか
         self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
         self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
@@ -118,12 +121,23 @@ class Game:
     # IPアドレス入力画面の描画
     def draw_ip_input(self):
         screen.fill((30, 30, 30))
-        
-        title = self.jpfont.render("接続先IPアドレスを入力 (Enterで確定)", True, (255, 255, 255))
+        explanation = self.jpfont.render("TABキーで入力する項目変更、Enterで確定", True, (255, 255, 255))
+        ip_color = (0, 255, 0) if self.input_mode == "ip" else (100, 100, 100)
+        name_color = (0, 255, 255) if self.input_mode == "name" else (100, 100, 100)
+        # ラベル
+        title = self.jpfont.render("接続先IPアドレス", True, ip_color)
+        title_name = self.jpfont.render("プレイヤー名", True, name_color)
+        # 入力内容
         input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
+        name_surface = self.font.render(self.player_name, True, (0, 255, 255))
+        # 表示位置
+        screen.blit(explanation, (100, 100))
         screen.blit(titleimg, (0, 0))
         screen.blit(title, (100, 200))
-        screen.blit(input_surface, (100, 300))
+        screen.blit(input_surface, (100, 250))
+        screen.blit(title_name, (100, 300))
+        screen.blit(name_surface, (100, 350))
+        # ヘルプボタン
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
         screen.blit(self.help_button_img, self.help_button_rect)
@@ -163,15 +177,25 @@ class Game:
                         self.ip_entered = True
                         self.send_connect_request()
                 elif event.type == pg.KEYDOWN:
-                    if event.key == pg.K_RETURN:
-                        self.ip_entered = True
-                        self.send_connect_request()
+                    if event.key == pg.K_TAB:
+                        # TABキーで入力対象を切り替える
+                        self.input_mode = "name" if self.input_mode == "ip" else "ip"
+                    elif event.key == pg.K_RETURN:
+                        if self.server_ip and self.player_name:
+                            self.ip_entered = True
+                            self.send_connect_request()
                     elif event.key == pg.K_BACKSPACE:
-                        self.server_ip = self.server_ip[:-1]
+                        if self.input_mode == "ip":
+                            self.server_ip = self.server_ip[:-1]
+                        else:
+                            self.player_name = self.player_name[:-1]
                     else:
                         # 数字、ドットなど入力可能な文字のみ
-                        if len(self.server_ip) < 15 and event.unicode.isprintable():
-                            self.server_ip += event.unicode
+                        if event.unicode.isprintable():
+                            if self.input_mode == "ip" and len(self.server_ip) < 15:
+                                self.server_ip += event.unicode
+                            elif self.input_mode == "name" and len(self.player_name) < 12:
+                                self.player_name += event.unicode
 
             
     # サーバーへの接続要求を送る
@@ -179,7 +203,7 @@ class Game:
         self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
-            "name": "Player"
+            "name": self.player_name or "Player"
             }
         self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
         print("[送信] connect_request を送信しました")
@@ -222,8 +246,9 @@ class Game:
                 elif msg_type == "game_state":
                     self.players = message["players"]
                     for pid, pdata in self.players.items():
+                        name = pdata.get("name", f"Player{pid[:4]}") # 名前を取得
                         if pid not in self.all_players_on_screen:
-                            p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1])
+                            p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name)
                             self.all_players_on_screen[pid] = p
                         else:
                             p = self.all_players_on_screen[pid]
@@ -292,6 +317,13 @@ class Game:
                 screen.blit(img, obs["pos"])
         # 全プレイヤーの描画（IDごと）
         for pid, player in self.all_players_on_screen.items():
+            if hasattr(self, "players") and pid in self.players:
+                player_data = self.players[pid]
+                name = player_data.get("name", "")
+                name_surface = self.player_name_font.render(name, True, (255, 255, 255))
+                name_pos = (player.chararect1.x + 6, player.chararect1.y - 20) if player.role == "runner" else (player.onirect.x + 6, player.onirect.y - 20)
+                screen.blit(name_surface, name_pos)
+            # キャラ画像の描画(元々ある部分)
             if player.role == "oni":
                 screen.blit(player.oni_image, player.onirect)
             else:

@@ -8,8 +8,9 @@ class Player:
     player_speed = 5
     oni_speed = 6
 
-    def __init__(self, role="runner", x=100, y=100):
+    def __init__(self, role="runner", x=100, y=100, name=""):
         self.role = role
+        self.name = name
         self.x, self.y = x, y
         # デプロイ時にパスのエラーを解消するために使った関数
         def resource_path(relative_path):
