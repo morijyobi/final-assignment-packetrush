@@ -59,7 +59,12 @@ def receive_loop():
     while True:
         try:
             data, addr = server_socket.recvfrom(1024)
-            message = json.loads(data.decode())
+            if not data.strip(): # 空データ対策
+                continue
+            try:
+                message = json.loads(data.decode())
+            except json.JSONDecodeError:
+                continue
             # ここでmessageだけ渡す
             threading.Thread(target=process_message, args=(message, addr)).start()
         except socket.timeout:

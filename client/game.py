@@ -66,7 +66,8 @@ class Game:
         self.last_state_request_time = pg.time.get_ticks()
         self.state_request_interval = 200  # ms
         self.clock = pg.time.Clock()
-        self.state = "lobby"  # 追加: ロビー → ゲームの状態を管理
+        self.state = "mode_select"  # 起動直後はモード選択画面
+        self.mode = None # "local"または"online"を保持
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
@@ -101,8 +102,88 @@ class Game:
             {"type": "momiji", "pos": (530, 260)},
             {"type": "momiji", "pos": (530, 340)}
         ]
-        
+        self.obstacle_rects = []
+        for obs in self.obstacles:
+            x, y = obs["pos"]
+            obj_type = obs["type"]
+            if obj_type in ["momiji", "iwa", "ido"]:
+                width, height = 60, 60
+            elif obj_type in ["otera", "torii"]:
+                width, height = 80, 80
+            else:
+                width, height = 40, 40
+            rect = pg.Rect(x, y, width, height)
+            self.obstacle_rects.append(rect)
         self.result_shown = False  # 勝敗表示済みフラグ
+    def check_collision(self, rect):
+        for obstacle in self.obstacle_rects:
+            if rect.colliderect(obstacle):
+                return True
+        return False
+    def update_ai_movement(self):
+        if self.state != "play_local":
+            return
+        ai_player = self.all_players_on_screen.get(self.ai_id)
+        runner = self.all_players_on_screen.get(self.player_id)
+        if not ai_player or not runner:
+            return
+        speed = 2 # AIのスピード
+        moved = False
+        # 優先的にx方向に近づく
+        if ai_player.onirect.x < runner.chararect1.x:
+            ai_player.onirect.x += speed
+            if self.check_collision(ai_player.onirect):
+                ai_player.onirect.x -= speed
+            else:
+                moved = True
+        elif ai_player.onirect.x > runner.chararect1.x:
+            ai_player.onirect.x -= speed
+            if self.check_collision(ai_player.onirect):
+                ai_player.onirect.x += speed
+            else:
+                moved = True
+        # Y方向
+        if ai_player.onirect.y < runner.chararect1.y:
+            ai_player.onirect.y += speed
+            if self.check_collision(ai_player.onirect):
+                ai_player.onirect.y -= speed
+            else:
+                moved = True
+        elif ai_player.onirect.y > runner.chararect1.y:
+            ai_player.onirect.y -= speed
+            if self.check_collision(ai_player.onirect):
+                ai_player.onirect.y += speed
+            else:
+                moved = True
+        # 当たり判定(鬼がランナーを捕まえた)
+        if ai_player.onirect.colliderect(runner.chararect1):
+            print("AI鬼に捕まりました!")
+            self.state = "result"
+            self.show_result("oni")
+    def play_local_game(self):
+        # 初期化済みか確認
+        if not hasattr(self, "local_initialized") or not self.local_initialized:
+            self.player_id == "local_player"
+            self.all_players_on_screen[self.player_id] = Player("runner", 100, 100, "自分")
+            self.ai_id = "ai_oni"
+            self.all_players_on_screen[self.ai_id] = Player("oni", 800, 300, "鬼ボット")
+            self.local_initialized = True # フラグを立てて初期化を1回だけにする
+        screen.fill((0, 0, 0))
+        self.handle_player_movement() # プレイヤーの操作
+        self.update_ai_movement() # AIの自動移動
+        self.draw() # ゲーム画面描画
+    def draw_mode_select(self):
+        screen.fill((30, 30, 30))
+        title = self.jpfont.render("モード選択", True, (255, 255, 255))
+        local_btn = self.jpfont.render("1人で遊ぶ", True, (0, 255, 0))
+        online_btn = self.jpfont.render("オンライン対戦", True, (0, 255, 255))
+        # ボタンの位置と範囲(selfに保存しておく)
+        self.local_btn_rect = local_btn.get_rect(topleft=(300, 200))
+        self.online_btn_rect = online_btn.get_rect(topleft=(300, 300))
+        screen.blit(title, (300, 100))
+        screen.blit(local_btn, self.local_btn_rect.topleft)
+        screen.blit(online_btn, self.online_btn_rect.topleft)
+        pg.display.flip()
     def show_help_message(self):
         # tkinterのルートウィンドウを非表示で作成
         root = tk.Tk()
@@ -430,8 +511,9 @@ class Game:
                 "pos": pos
             }
             try:
-                self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
-                print(f"[送信] 新しい位置: {pos}")
+                if self.mode == "online":
+                    self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
+                    print(f"[送信] 新しい位置: {pos}")
             except Exception as e:
                 print("[送信エラー]", e)
     # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
@@ -468,8 +550,8 @@ class Game:
         self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
     # メインループ
     def run(self):
-        while not self.ip_entered:
-            self.lobby_loop()  # IP入力画面のループ
+        # while not self.ip_entered:
+        #     self.lobby_loop()  # IP入力画面のループ
         # self.state = "lobby"
 
         last_send_time = pg.time.get_ticks()
@@ -479,10 +561,28 @@ class Game:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
-                    
+                # 状態に応じて処理分岐
+                if self.state == "mode_select":
+                    if event.type == pg.MOUSEBUTTONDOWN:
+                        if self.local_btn_rect.collidepoint(event.pos):
+                            self.mode = "local"
+                            self.state = "play_local" # ローカルモードへ
+                        elif self.online_btn_rect.collidepoint(event.pos):
+                            self.mode = "online"
+                            self.state = "input_ip" # オンラインモードへ
             current_time = pg.time.get_ticks()
-            
-            if self.state == "lobby":
+            if self.state == "mode_select":
+                self.draw_mode_select()
+            elif self.state == "input_ip":
+                while not self.ip_entered:
+                    self.lobby_loop()
+                self.state = "lobby"
+            elif self.state == "play_local":
+                self.play_local_game()
+                # if event.type == pg.MOUSEBUTTONDOWN:
+                #     if self.back_btn_rect.collidepoint(event.pos):
+                #         self.state = "mode_select"
+            elif self.state == "lobby":
                 self.draw_lobby() # ロビー画面に移動
                 # プレイヤー数更新要求を定期的に送信
                 if current_time - self.last_state_request_time > self.state_request_interval:
@@ -494,9 +594,10 @@ class Game:
                         print(f"[送信エラー] ロビー更新要求: {e}")
             elif self.state == "playing" and current_time - last_send_time > send_interval:
                 try:
-                    msg = {"type": "state_request"}
-                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-                    last_send_time = current_time
+                    if self.mode == "online":
+                        msg = {"type": "state_request"}
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                        last_send_time = current_time
                 except Exception as e:
                     print("[送信エラー]", e)
 
