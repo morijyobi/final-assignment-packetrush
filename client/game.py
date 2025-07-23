@@ -7,6 +7,7 @@ import threading
 from client.player import Player
 from client.utils import config
 import os
+import ipaddress
 import tkinter as tk
 from tkinter import messagebox
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -70,6 +71,7 @@ class Game:
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
+        self.ip_error_message = ""
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -137,6 +139,10 @@ class Game:
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
         screen.blit(name_surface, (100, 400))
+        # エラーメッセージ表示
+        if self.ip_error_message:
+            error_text = self.jpfont.render(self.ip_error_message, True, (255, 0, 0)) # 赤色で表示
+            screen.blit(error_text, (100, 220))
         # ヘルプボタン
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
@@ -200,13 +206,24 @@ class Game:
             
     # サーバーへの接続要求を送る
     def send_connect_request(self):
+        self.ip_error_message = "" # 新しい接続試行時にエラーメッセージをリセット
+        try:
+            ipaddress.ip_address(self.server_ip)
+        except ValueError:
+            self.ip_error_message = "IPアドレスの形式が不正です！"
+            self.ip_entered = False
+            return
         self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
             "name": self.player_name or "Player"
             }
-        self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
-        print("[送信] connect_request を送信しました")
+        try:
+            self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
+            print("[送信] connect_request を送信しました")
+        except Exception as e:
+            self.ip_error_message = f"サーバーへの接続に失敗しました: {e}"
+            self.ip_entered = False
         # try:
         #     data, _ = self.socket.recvfrom(1024)
         #     response = json.loads(data.decode())
