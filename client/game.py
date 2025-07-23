@@ -502,18 +502,19 @@ class Game:
                 oni_rect = my_player.onirect
 
                 for pid, other_player in self.all_players_on_screen.items():
-                    if pid == self.player_id:
-                        continue  # 自分自身はスキップ
-                    if other_player.role == "runner":
-                        runner_rect = other_player.chararect1
-                        if oni_rect.colliderect(runner_rect):
-                            print("👹 鬼がランナーを捕まえた！")
+                        if pid == self.player_id:
+                            continue  # 自分自身はスキップ
+                        if other_player.role == "runner":
+                            runner_rect = other_player.chararect1
+                            if oni_rect.colliderect(runner_rect):
+                                print("👹 鬼がランナーを捕まえた！")
+                    
+                                # 鬼がサーバーに勝利報告
+                                msg = {"type": "game_result", "winner": "oni"}
+                                self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
 
-                            self.state = "result"
-                            self.show_result("oni")
-                            msg = {"type": "game_result", "winner": "oni"}
-                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-                            return  # 勝利後は移動処理を終了
+                                # このクライアントでは送信だけ行い、状態遷移は受信で処理
+                                return  # 他の動作を停止
         # 当たり判定チェック
         if moved and self.collides_with_obstacles(rect, self.obstacles):
             # 衝突していたら元の位置に戻す
@@ -631,6 +632,7 @@ class Game:
                 pass
 
             self.clock.tick(60)
+    
             
 if __name__ == "__main__":
     game = Game()
