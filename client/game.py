@@ -134,7 +134,7 @@ class Game:
         name_surface = self.font.render(self.player_name, True, (0, 255, 255))
         # 表示位置
         screen.blit(titleimg, (0, 0))
-        screen.blit(explanation, (50, 200))
+        screen.blit(explanation, (50, 170))
         screen.blit(title, (100, 250))
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
@@ -142,7 +142,7 @@ class Game:
         # エラーメッセージ表示
         if self.ip_error_message:
             error_text = self.jpfont.render(self.ip_error_message, True, (255, 0, 0)) # 赤色で表示
-            screen.blit(error_text, (100, 220))
+            screen.blit(error_text, (100, 210))
         # ヘルプボタン
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
