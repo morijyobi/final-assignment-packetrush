@@ -7,6 +7,7 @@ import threading
 from client.player import Player
 from client.utils import config
 import os
+from pygame import mixer
 import ipaddress
 import tkinter as tk
 from tkinter import messagebox
@@ -39,6 +40,7 @@ total_time = 90
 class Game:
     def __init__(self, role = "runner"):
         pg.font.init()
+        pg.mixer.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(0.1)
         # 日本語対応フォントの読み込み
@@ -78,6 +80,10 @@ class Game:
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
         self.ip_error_message = ""
+        
+        self.game_bgm_path = resource_path("client/assets/sounds/立待ち月.mp3") # bgm
+        self.lobby_bgm_path = resource_path("client/assets/sounds/華ト月夜.mp3")
+        self.current_bgm_path = None
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -170,6 +176,7 @@ class Game:
                 moved = True
         # 当たり判定(鬼がランナーを捕まえた)
         if ai_player.onirect.colliderect(runner.chararect1):
+            pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
             print("AI鬼に捕まりました!")
             self.state = "result"
             self.show_result("oni")
@@ -390,7 +397,12 @@ class Game:
     # 結果表示
     def show_result(self, winner):
         # screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
-
+        
+        # bgm停止
+        if pg.mixer.music.get_busy():
+            pg.mixer.music.stop()
+            self.current_bgm_path = None
+        
         font = pg.font.SysFont(None, 64)
         if winner == "oni":
             text = self.jpfont.render("鬼の勝利！", True, (255, 0, 0))
@@ -528,6 +540,7 @@ class Game:
                             runner_rect = other_player.chararect1
                             if oni_rect.colliderect(runner_rect):
                                 print("👹 鬼がランナーを捕まえた！")
+                                pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
                     
                                 # 鬼がサーバーに勝利報告
                                 msg = {"type": "game_result", "winner": "oni"}
@@ -608,6 +621,20 @@ class Game:
         send_interval = 100
 
         while self.running:
+            # bgmの制御
+            target_bgm_path = None
+            if self.state == "lobby":
+                target_bgm_path = self.lobby_bgm_path
+            elif self.state in ["playing", "play_local"]:
+                target_bgm_path = self.game_bgm_path
+            if target_bgm_path and self.current_bgm_path != target_bgm_path:
+                try:
+                    pg.mixer.music.load(target_bgm_path)
+                    pg.mixer.music.play(-1)
+                    self.current_bgm_path = target_bgm_path
+                except pg.error as e:
+                    print(f"bgmの再生失敗:{e}")
+                    self.current_bgm_path = None
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
