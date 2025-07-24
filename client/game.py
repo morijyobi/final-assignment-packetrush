@@ -68,6 +68,11 @@ class Game:
         self.clock = pg.time.Clock()
         self.state = "mode_select"  # 起動直後はモード選択画面
         self.mode = None # "local"または"online"を保持
+        self.game_mode = "normal" # または"escape"
+        goal_img_path = resource_path("client/assets/images/goal.png")
+        self.goal_image = pg.transform.scale(pg.image.load(goal_img_path), (60, 60)) # サイズ調整
+        self.goal_pos = (600, 100)
+        self.goal_rect = pg.Rect(self.goal_pos[0], self.goal_pos[1], 60, 60)
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
@@ -115,6 +120,12 @@ class Game:
             rect = pg.Rect(x, y, width, height)
             self.obstacle_rects.append(rect)
         self.result_shown = False  # 勝敗表示済みフラグ
+    def handle_title_events(self, event):
+        if event.type == pg.MOUSEBUTTONDOWN:
+            if self.toggle_mode_rect.collidepoint(event.pos):
+                # モードを切り替え
+                self.game_mode = "escape" if self.game_mode == "normal" else "normal"
+                print(f"モード切替:{self.game_mode}")
     def check_collision(self, rect):
         for obstacle in self.obstacle_rects:
             if rect.colliderect(obstacle):
@@ -218,6 +229,12 @@ class Game:
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
         screen.blit(name_surface, (100, 400))
+        # モードトグルボタン
+        mode_text = "現在のモード:ノーマル" if self.game_mode == "normal" else "現在のモード:脱出"
+        self.toggle_mode_rect = pg.Rect(250, 0, 400, 60)
+        pg.draw.rect(screen, (50, 150, 200), self.toggle_mode_rect)
+        mode_surface = self.jpfont.render(mode_text, True, (255, 255, 255))
+        screen.blit(mode_surface, (self.toggle_mode_rect.x + 5, self.toggle_mode_rect.y + 8))
         # ヘルプボタン
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
@@ -226,7 +243,6 @@ class Game:
         self.title_button_rect = self.title_button_img.get_rect(topleft=(300, 450))
         screen.blit(self.title_button_img, self.title_button_rect)
         pg.display.flip()
-
     # ゲーム開始待機ロビー画面
     def draw_lobby(self):
         screen.blit(lobbyimg, (0, 0))
@@ -257,6 +273,8 @@ class Game:
                     if self.title_button_rect.collidepoint(event.pos):
                         self.ip_entered = True
                         self.send_connect_request()
+                    # モード切り替えボタンの判定
+                    self.handle_title_events(event)
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_TAB:
                         # TABキーで入力対象を切り替える
@@ -416,6 +434,8 @@ class Game:
             font = pg.font.SysFont(None, 36)
             timer_text = self.jpfont.render(f"残り時間: {remaining} 秒", True, (255, 255, 255))
             screen.blit(timer_text, (10, 10))
+        if self.game_mode == "escape":
+            screen.blit(self.goal_image, self.goal_pos)
         pg.display.flip()
 
     # タイトルの表示
@@ -480,7 +500,7 @@ class Game:
             moved = True
         # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
         if self.state == "playing":
-            my_player = self.all_players_on_screen.get(self.player_id)
+            my_player = self.all_players_on_screen.get(self.player_id)        
             if my_player and my_player.role == "oni":
                 oni_rect = my_player.onirect
 
@@ -497,7 +517,12 @@ class Game:
                             msg = {"type": "game_result", "winner": "oni"}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                             return  # 勝利後は移動処理を終了
-        # 当たり判定チェック
+        # --- 鬼がゴールにぶつかったら移動キャンセル ---
+        if self.game_mode == "escape" and hasattr(self, "goal_rect"):
+            if rect.colliderect(self.goal_rect) and my_player.role != "runner":
+                rect.topleft = original_pos
+                moved = False
+        # --- 障害物との当たり判定 ---
         if moved and self.collides_with_obstacles(rect, self.obstacles):
             # 衝突していたら元の位置に戻す
             rect.topleft = original_pos
@@ -516,6 +541,15 @@ class Game:
                     print(f"[送信] 新しい位置: {pos}")
             except Exception as e:
                 print("[送信エラー]", e)
+        if self.game_mode == "escape" and my_player.role == "runner":
+                if rect.colliderect(self.goal_rect):
+                    print("ゴール到達!")
+                    self.state = "result"
+                    self.show_result("runner") # ランナーの勝利として処理
+                    if self.mode == "online":
+                        msg = {"type": "game_result", "winner":"runner"}
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    return
     # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
     def handle_common_events(self):
         for event in pg.event.get():
@@ -607,9 +641,18 @@ class Game:
                 elapsed = pg.time.get_ticks() - self.start_game_time
                 if elapsed >= self.time_limit:
                     self.state = "result"
-                    self.show_result("runner")
-                    msg = {"type": "game_result", "winner": "runner"}
-                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    # 🔽 escapeモードのときは鬼の勝ち
+                    if self.game_mode == "escape":
+                        self.show_result("oni")  # 鬼の勝利画面
+                        if self.mode == "online":
+                            msg = {"type": "game_result", "winner": "oni"}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    else:
+                        self.show_result("runner")  # ノーマルモードではランナー勝利
+                        if self.mode == "online":
+                            msg = {"type": "game_result", "winner": "runner"}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+
             elif self.state == "result":
                 pass
 
