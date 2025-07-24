@@ -29,6 +29,6 @@ class Player:
         else:
             charimage_path = resource_path(Player.image_list[self.p_image])
             self.player_image = pg.image.load(charimage_path)
-            self.player_image = pg.transform.scale(self.player_image, (48, 48))
-            self.chararect1 = self.player_image.get_rect(topleft=(x, y))
+            self.player_image = pg.transform.scale(self.player_image, (40, 40))
+            self.chararect1 = self.player_image.get_rect(center=(x + 20, y + 20)).inflate(-10, -10) # 当たり判定を縮小
             Player.p_image = (Player.p_image + 1) % len(Player.image_list)
