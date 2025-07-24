@@ -7,6 +7,7 @@ import threading
 from client.player import Player
 from client.utils import config
 import os
+import ipaddress
 import tkinter as tk
 from tkinter import messagebox
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -76,6 +77,7 @@ class Game:
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
+        self.ip_error_message = ""
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -224,7 +226,7 @@ class Game:
         name_surface = self.font.render(self.player_name, True, (0, 255, 255))
         # 表示位置
         screen.blit(titleimg, (0, 0))
-        screen.blit(explanation, (50, 200))
+        screen.blit(explanation, (50, 170))
         screen.blit(title, (100, 250))
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
@@ -235,6 +237,10 @@ class Game:
         pg.draw.rect(screen, (50, 150, 200), self.toggle_mode_rect)
         mode_surface = self.jpfont.render(mode_text, True, (255, 255, 255))
         screen.blit(mode_surface, (self.toggle_mode_rect.x + 5, self.toggle_mode_rect.y + 8))
+        # エラーメッセージ表示
+        if self.ip_error_message:
+            error_text = self.jpfont.render(self.ip_error_message, True, (255, 0, 0)) # 赤色で表示
+            screen.blit(error_text, (100, 210))
         # ヘルプボタン
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
@@ -299,13 +305,24 @@ class Game:
             
     # サーバーへの接続要求を送る
     def send_connect_request(self):
+        self.ip_error_message = "" # 新しい接続試行時にエラーメッセージをリセット
+        try:
+            ipaddress.ip_address(self.server_ip)
+        except ValueError:
+            self.ip_error_message = "IPアドレスの形式が不正です！"
+            self.ip_entered = False
+            return
         self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
             "name": self.player_name or "Player"
             }
-        self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
-        print("[送信] connect_request を送信しました")
+        try:
+            self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
+            print("[送信] connect_request を送信しました")
+        except Exception as e:
+            self.ip_error_message = f"サーバーへの接続に失敗しました: {e}"
+            self.ip_entered = False
         # try:
         #     data, _ = self.socket.recvfrom(1024)
         #     response = json.loads(data.decode())
@@ -505,18 +522,17 @@ class Game:
                 oni_rect = my_player.onirect
 
                 for pid, other_player in self.all_players_on_screen.items():
-                    if pid == self.player_id:
-                        continue  # 自分自身はスキップ
-                    if other_player.role == "runner":
-                        runner_rect = other_player.chararect1
-                        if oni_rect.colliderect(runner_rect):
-                            print("👹 鬼がランナーを捕まえた！")
+                        if pid == self.player_id:
+                            continue  # 自分自身はスキップ
+                        if other_player.role == "runner":
+                            runner_rect = other_player.chararect1
+                            if oni_rect.colliderect(runner_rect):
+                                print("👹 鬼がランナーを捕まえた！")
+                    
+                                # 鬼がサーバーに勝利報告
+                                msg = {"type": "game_result", "winner": "oni"}
+                                self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
 
-                            self.state = "result"
-                            self.show_result("oni")
-                            msg = {"type": "game_result", "winner": "oni"}
-                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-                            return  # 勝利後は移動処理を終了
         # --- 鬼がゴールにぶつかったら移動キャンセル ---
         if self.game_mode == "escape" and hasattr(self, "goal_rect"):
             if rect.colliderect(self.goal_rect) and my_player.role != "runner":
@@ -657,6 +673,7 @@ class Game:
                 pass
 
             self.clock.tick(60)
+    
             
 if __name__ == "__main__":
     game = Game()

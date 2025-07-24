@@ -10,7 +10,7 @@ server_socket.bind(("0.0.0.0", 5000))
 server_socket.settimeout(0.5)
 
 players = {}
-REQUIRED_PLAYERS = 2
+REQUIRED_PLAYERS = 4
 game_started = False
 print("サーバー起動: 0.0.0.0:5000 で待機中...")
 # プレイヤーをアドレスで検索
@@ -35,8 +35,8 @@ def calculate_new_position(pos, direction, step=5):
 def assign_initial_positions():
     positions_runner = [
         [0, 500],    # 左下
-        [920, 0],    # 右上
-        [920, 600],  # 右下
+        [720, 100],    # 右上
+        [720, 500],  # 右下
     ]
     positions_oni = [
         [0, 100],
@@ -89,6 +89,7 @@ def process_message(message, addr):
         }
 
         print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {name}")
+
         
         ack = {"type": "connect_ack", "player_id": player_id}
         server_socket.sendto(json.dumps(ack).encode(), addr)
@@ -125,6 +126,23 @@ def process_message(message, addr):
         if player_id in players:
             players[player_id]["pos"] = new_pos
             print(f"[更新] {player_id} の位置を {new_pos} に更新")
+
+            # 👇 鬼がランナーに接触しているかをチェック（ゲーム開始後のみ）
+            if game_started:
+                oni_pos = None
+                for pid, p in players.items():
+                    if p["role"] == "oni":
+                        oni_pos = p["pos"]
+                        break
+                if oni_pos:
+                    for pid, p in players.items():
+                        if p["role"] == "runner":
+                            runner_pos = p["pos"]
+                            # 20px以内なら接触とみなす（大きさに合わせて調整）
+                            if abs(oni_pos[0] - runner_pos[0]) < 30 and abs(oni_pos[1] - runner_pos[1]) < 30:
+                                print(f"[👹接触] 鬼がランナーを捕まえました！")
+                                send_game_result("oni")
+                                break
         else:
             print(f"[警告] {player_id} は登録されていません")
     elif msg_type == "game_result":
@@ -164,5 +182,20 @@ def start_game():
             start_msg = {"type": "start_game"}
             server_socket.sendto(json.dumps(start_msg).encode(), addr)
     print("✅ プレイヤーが揃いました。ゲームを開始します。")
+    
+def send_game_result(winner):
+    global game_started
+    result_msg = {
+        "type": "game_result",
+        "winner": winner
+    }
+    for p in players.values():
+        try:
+            server_socket.sendto(json.dumps(result_msg).encode(), p["addr"])
+        except Exception as e:
+            print(f"[送信エラー] {p['id']}: {e}")
+    game_started = False  # ゲーム終了
+    print(f"[🏁ゲーム終了] 勝者: {winner}")
+    
 # 🔄 受信ループ開始
 receive_loop()
