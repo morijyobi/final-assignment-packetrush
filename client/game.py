@@ -264,10 +264,14 @@ class Game:
         screen.blit(name_surface, (100, 400))
         # モードトグルボタン
         mode_text = "現在のモード:ノーマル" if self.game_mode == "normal" else "現在のモード:脱出"
+        mode_explanation_text = "クリックでモード変更"
+        mode_explanation_font = pg.font.Font(self.font_path, 24)
         self.toggle_mode_rect = pg.Rect(250, 0, 400, 60)
         pg.draw.rect(screen, (50, 150, 200), self.toggle_mode_rect)
         mode_surface = self.jpfont.render(mode_text, True, (255, 255, 255))
+        mode_explanation_surface = mode_explanation_font.render(mode_explanation_text, True, (255, 255, 255))
         screen.blit(mode_surface, (self.toggle_mode_rect.x + 5, self.toggle_mode_rect.y + 8))
+        screen.blit(mode_explanation_surface, (4, 0))
         # エラーメッセージ表示
         if self.ip_error_message:
             error_text = self.jpfont.render(self.ip_error_message, True, (255, 0, 0)) # 赤色で表示
