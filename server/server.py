@@ -8,6 +8,7 @@ import pygame as pg
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind(("0.0.0.0", 5000))
 server_socket.settimeout(0.5)
+retry_votes = set()  # 再試合希望者のIDを保存
 
 players = {}
 REQUIRED_PLAYERS = 4
@@ -125,7 +126,7 @@ def process_message(message, addr):
         new_pos = message.get("pos")
         if player_id in players:
             players[player_id]["pos"] = new_pos
-            print(f"[更新] {player_id} の位置を {new_pos} に更新")
+            # print(f"[更新] {player_id} の位置を {new_pos} に更新")
 
             # 👇 鬼がランナーに接触しているかをチェック（ゲーム開始後のみ）
             if game_started:
@@ -153,11 +154,37 @@ def process_message(message, addr):
             "type": "game_result",
             "winner": winner
         }
+
         for p in players.values():
             try:
                 server_socket.sendto(json.dumps(result_msg).encode(), p["addr"])
             except Exception as e:
                 print(f"[送信エラー] {p['id']}: {e}")
+
+        # ✅ 勝敗通知後にゲーム状態をリセット
+        game_started = False
+
+    elif msg_type == "retry_request":
+        player_id = message.get("player_id")
+        if player_id in players:
+            retry_votes.add(player_id)
+            print(f"[再試合リクエスト] {player_id}")
+        
+            if len(retry_votes) == len(players):
+                print("[再試合] 全員の再試合リクエストが揃いました。ゲームを再開します。")
+                retry_votes.clear()
+
+                # ✅ まず全員に「retry_start」メッセージを送ってロビー画面に戻す
+                retry_msg = {"type": "retry_start"}
+                for p in players.values():
+                    server_socket.sendto(json.dumps(retry_msg).encode(), p["addr"])
+
+                # 少し待ってからゲーム開始（ロビーが描画される時間を与える）
+                time.sleep(1.0)
+
+                assign_roles()
+                start_game()
+
 
     else:
         print(f"[警告] サーバーから未知の応答: {message}")
@@ -175,14 +202,41 @@ def assign_roles():
 def start_game():
     global game_started
     game_started = True
-    assign_initial_positions()  # ここで初期位置を決める
+
+    # 役割と初期位置を再設定
+    assign_roles()
+    assign_initial_positions()
+
+    # 各プレイヤーの再試合同意フラグをリセット
+    for p in players.values():
+        p["rematch_agreed"] = False
+
+    # 各クライアントにゲーム開始を通知
     for pid in players:
-        addr = players[pid].get("addr")  # addr を保存していない場合は対応が必要
+        addr = players[pid].get("addr")
         if addr:
             start_msg = {"type": "start_game"}
             server_socket.sendto(json.dumps(start_msg).encode(), addr)
+
     print("✅ プレイヤーが揃いました。ゲームを開始します。")
+ 
+
+
+def reset_server_game():
+    global game_started
+    global players # players辞書もリセットまたはクリアしたい場合
+    game_started = False
     
+    # プレイヤー情報を完全にクリアするか、IDを保持してポジションなどをリセットするかは要検討
+    # ここでは、ゲーム終了後にプレイヤーをロビーに戻す想定で、
+    # 各プレイヤーのポジションと役割をリセットし、ゲーム開始待ち状態に戻します。
+    for pid in players:
+        players[pid]["pos"] = [0, 0] # 初期位置にリセット (または適当な待機位置)
+        players[pid]["role"] = None # 役割をリセット
+
+    print("[サーバー] ゲーム状態をリセットしました。新しいゲームの開始を待機します。")
+
+# send_game_result の最後に呼び出す
 def send_game_result(winner):
     global game_started
     result_msg = {
@@ -196,6 +250,8 @@ def send_game_result(winner):
             print(f"[送信エラー] {p['id']}: {e}")
     game_started = False  # ゲーム終了
     print(f"[🏁ゲーム終了] 勝者: {winner}")
+    reset_server_game() # ★ ここでサーバーのゲーム状態をリセット
+    
     
 # 🔄 受信ループ開始
 receive_loop()
