@@ -359,6 +359,15 @@ class Game:
                     winner = message.get("winner")
                     self.state = "result"
                     self.show_result(winner)
+                    
+                elif msg_type == "retry_start":
+                    self.result_shown = False
+                    self.state = "lobby"
+                    self.running = True
+                    self.all_players_on_screen.clear()
+                    self.players.clear()
+                    self.draw_lobby()
+
 
 
                 else:
@@ -371,7 +380,7 @@ class Game:
 
     # 結果表示
     def show_result(self, winner):
-        # screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
+        screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
 
         font = pg.font.SysFont(None, 64)
         if winner == "oni":
@@ -391,7 +400,7 @@ class Game:
         screen.blit(self.exit_button_img, self.exit_button_rect)
         screen.blit(self.retry_button_img, self.retry_button_rect)
         pg.display.flip()
-         # ボタン待ちループ
+        # ボタン待ちループ
         waiting = True
         while waiting:
             for event in pg.event.get():
@@ -399,12 +408,22 @@ class Game:
                     pg.quit()
                     sys.exit()
                 elif event.type == pg.MOUSEBUTTONDOWN:
+                    -print("Click pos:", event.pos)
                     if self.exit_button_rect.collidepoint(event.pos):
                         pg.quit()
                         sys.exit()
                     elif self.retry_button_rect.collidepoint(event.pos):
-                        waiting = False  # 再スタート用に break
+                        if self.server_addr:
+                            print("[🔁] 再試合希望を送信")
+                            msg = {"type": "retry_request", "player_id": self.player_id}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                        self.reset_game_state()
+                        waiting = False
+
+
             self.clock.tick(60)
+        # show_result を抜けた後、run メソッドのループが継続し、
+        # リセットされた state に基づいて画面が描画される
     # ゲーム画面の描画
     def draw(self):
         screen.blit(haikeimg, (0, 0))
@@ -531,7 +550,7 @@ class Game:
             try:
                 if self.mode == "online":
                     self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
-                    print(f"[送信] 新しい位置: {pos}")
+                    # print(f"[送信] 新しい位置: {pos}")
             except Exception as e:
                 print("[送信エラー]", e)
     # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
@@ -566,6 +585,7 @@ class Game:
             "direction": direction  # e.g. "up", "down", "left", "right"
         }
         self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+    
     # メインループ
     def run(self):
         # while not self.ip_entered:
@@ -629,9 +649,44 @@ class Game:
                     msg = {"type": "game_result", "winner": "runner"}
                     self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
             elif self.state == "result":
-                pass
+                pass # ★ ここは変更なし。show_resultが独自にループを持つため
 
+            # self.result_shown = False # この行を削除
             self.clock.tick(60)
+
+    def reset_game_state(self):
+        # ゲームの状態変数を初期値にリセット
+        self.start_game_time = 0
+        self.input_text = ""
+        # self.role = "runner" # 役割は再選択できるようにするか、固定するか検討
+        self.running = True # メインループは継続
+        # self.server_ip = "" # IPアドレスを再入力させる場合はリセット
+        # self.player_name = "" # プレイヤー名を再入力させる場合はリセット
+        self.player_id = None
+        self.ip_entered = False
+        self.last_send_time = 0
+        self.last_state_request_time = pg.time.get_ticks()
+        self.current_player_count = 0
+        self.ip_error_message = ""
+
+        # 全てのプレイヤーオブジェクトをクリア
+        self.all_players_on_screen = {}
+
+        # ローカルプレイの初期化フラグをリセット
+        if hasattr(self, "local_initialized"):
+            del self.local_initialized
+
+        # 状態をモード選択またはIP入力画面に戻す
+        if self.mode == "online":
+            self.state = "input_ip" # オンラインならIP再入力から
+            self.server_ip = "" # IPをリセットして再入力を促す
+            self.player_name = "" # 名前もリセット
+        else: # "local" モードの場合
+            self.state = "mode_select" # ローカルならモード選択から
+            self.mode = None # モードもリセット
+
+        self.result_shown = False # 結果表示済みフラグをリセット
+        print("[ゲームリセット] ゲーム状態が初期化されました。")
     
             
 if __name__ == "__main__":
