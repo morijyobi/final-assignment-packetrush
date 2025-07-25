@@ -345,9 +345,11 @@ class Game:
                     self.players = message["players"]
                     for pid, pdata in self.players.items():
                         name = pdata.get("name", f"Player{pid[:4]}") # 名前を取得
+                        caught = False
                         if pid not in self.all_players_on_screen:
-                            p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name)
+                            p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name, caught)
                             self.all_players_on_screen[pid] = p
+                            
                         else:
                             p = self.all_players_on_screen[pid]
                             if p.role == "oni":
@@ -496,6 +498,7 @@ class Game:
             rect.x = config.SCREEN_WIDTH - rect.width
             moved = True
         # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
+        # 修正できなかったらここからコメントアウトする
         if self.state == "playing":
             my_player = self.all_players_on_screen.get(self.player_id)
             if my_player and my_player.role == "oni":
@@ -507,14 +510,47 @@ class Game:
                         if other_player.role == "runner":
                             runner_rect = other_player.chararect1
                             if oni_rect.colliderect(runner_rect):
-                                print("👹 鬼がランナーを捕まえた！")
-                    
-                                # 鬼がサーバーに勝利報告
-                                msg = {"type": "game_result", "winner": "oni"}
-                                self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                                if not hasattr(other_player, "caught") or not other_player.caught:
+                                    print("👹 鬼がランナーを捕まえた！")
+                                    other_player[pid].caught = True  # 捕まったマークをつける
+                                runners = [
+                                    p for pid, p in self.all_players_on_screen.items()
+                                    if p.role == "runner"
+                                ]
 
-                                # このクライアントでは送信だけ行い、状態遷移は受信で処理
-                                return  # 他の動作を停止
+                                print(f"🎮 全プレイヤー数: {len(self.all_players_on_screen)}")
+                                print(f"👟 ランナー数: {len(runners)}")
+
+                                for i, r in enumerate(runners):
+                                    print(f"  - ランナー{i}: caught={getattr(r, 'caught', False)}")    
+                                all_caught = all(
+                                    getattr(p, "caught", False) for pid, p in self.all_players_on_screen.items()
+                                    if p.role == "runner"
+                                )
+                                if all_caught:
+                                    msg = {"type": "game_result", "winner": "oni"}
+                                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+            #ここまでコメントアウト
+            
+        #　修正できなかったら以下のコメントを外せば一人捕まった時点で鬼の勝利になっていた状態に戻せる                             
+        # if self.state == "playing":
+        #     my_player = self.all_players_on_screen.get(self.player_id)
+        #     if my_player and my_player.role == "oni":
+        #         oni_rect = my_player.onirect
+
+        #         for pid, other_player in self.all_players_on_screen.items():
+        #             if pid == self.player_id:
+        #                 continue  # 自分自身はスキップ
+        #             if other_player.role == "runner":
+        #                 runner_rect = other_player.chararect1
+        #                 if oni_rect.colliderect(runner_rect):
+        #                     print("👹 鬼がランナーを捕まえた！")
+                    
+        #                     # 鬼がサーバーに勝利報告
+        #                     msg = {"type": "game_result", "winner": "oni"}
+        #                     self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+        #                     # このクライアントでは送信だけ行い、状態遷移は受信で処理
+        #                     return  # 他の動作を停止
         # 当たり判定チェック
         if moved and self.collides_with_obstacles(rect, self.obstacles):
             # 衝突していたら元の位置に戻す

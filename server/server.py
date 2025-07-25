@@ -85,7 +85,8 @@ def process_message(message, addr):
             "name": name,
             "pos": [0, 0],
             "addr": addr,
-            "role": None
+            "role": None,
+            "caught": False
         }
 
         print(f"[接続] {addr} が接続。ID: {player_id}, 名前: {name}")
