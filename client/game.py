@@ -7,6 +7,7 @@ import threading
 from client.player import Player
 from client.utils import config
 import os
+from pygame import mixer
 import ipaddress
 import tkinter as tk
 from tkinter import messagebox
@@ -39,6 +40,7 @@ total_time = 90
 class Game:
     def __init__(self, role = "runner"):
         pg.font.init()
+        pg.mixer.init()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(0.1)
         # 日本語対応フォントの読み込み
@@ -69,10 +71,19 @@ class Game:
         self.clock = pg.time.Clock()
         self.state = "mode_select"  # 起動直後はモード選択画面
         self.mode = None # "local"または"online"を保持
+        self.game_mode = "normal" # または"escape"
+        goal_img_path = resource_path("client/assets/images/goal.png")
+        self.goal_image = pg.transform.scale(pg.image.load(goal_img_path), (60, 60)) # サイズ調整
+        self.goal_pos = (600, 100)
+        self.goal_rect = pg.Rect(self.goal_pos[0], self.goal_pos[1], 60, 60)
         # クライアントの画面に表示する全プレイヤーのオブジェクトを管理する辞書
         self.all_players_on_screen = {}
         self.current_player_count = 0 #プレイヤー人数
         self.ip_error_message = ""
+        
+        self.game_bgm_path = resource_path("client/assets/sounds/立待ち月.mp3") # bgm
+        self.lobby_bgm_path = resource_path("client/assets/sounds/華ト月夜.mp3")
+        self.current_bgm_path = None
 
         # サーバーからのメッセージを待機するスレッド
         threading.Thread(target=self.receive_loop, daemon=True).start()
@@ -85,7 +96,7 @@ class Game:
         self.obstacle_images = {
             "momiji": pg.transform.scale(pg.image.load(image_path2), (60, 60)),
             "ido": pg.transform.scale(pg.image.load(image_path3), (30, 30)),
-            "iwa": pg.transform.scale(pg.image.load(image_path4), (30, 30)),
+            "iwa": pg.transform.scale(pg.image.load(image_path4), (20, 20)),
             "otera": pg.transform.scale(pg.image.load(image_path5), (80, 80)),
             "torii": pg.transform.scale(pg.image.load(image_path6), (80, 80))
         }
@@ -108,71 +119,102 @@ class Game:
         for obs in self.obstacles:
             x, y = obs["pos"]
             obj_type = obs["type"]
-            if obj_type in ["momiji", "iwa", "ido"]:
-                width, height = 60, 60
-            elif obj_type in ["otera", "torii"]:
+            if obj_type == "momiji":
+                width, height = 50, 50
+            elif obj_type == "otera":
                 width, height = 80, 80
+            elif obj_type == "torii":
+                width, height = 80, 80
+            elif obj_type == "iwa":
+                width, height = 16, 16
+            elif obj_type == "ido":
+                width, height = 30, 30 # 念のためデフォルト
             else:
-                width, height = 40, 40
+                width, height = 30, 30
             rect = pg.Rect(x, y, width, height)
             self.obstacle_rects.append(rect)
         self.result_shown = False  # 勝敗表示済みフラグ
+    def handle_title_events(self, event):
+        if event.type == pg.MOUSEBUTTONDOWN:
+            if self.toggle_mode_rect.collidepoint(event.pos):
+                # モードを切り替え
+                self.game_mode = "escape" if self.game_mode == "normal" else "normal"
+                print(f"モード切替:{self.game_mode}")
     def check_collision(self, rect):
         for obstacle in self.obstacle_rects:
             if rect.colliderect(obstacle):
+                print("衝突しました")
                 return True
         return False
     def update_ai_movement(self):
-        if self.state != "play_local":
+        print(f"update_ai_movement called with state={self.state}")
+        if self.state not in ["play_local", "playing"]:
+            print(f"update_ai_movement: state = {self.state}, returning")
             return
         ai_player = self.all_players_on_screen.get(self.ai_id)
         runner = self.all_players_on_screen.get(self.player_id)
         if not ai_player or not runner:
+            print("update_ai_movement: ai_player or runner not found")
             return
-        speed = 2 # AIのスピード
+
+        speed = 2
         moved = False
-        # 優先的にx方向に近づく
+
+        directions = []
+
+        # X方向の移動方向を決める
         if ai_player.onirect.x < runner.chararect1.x:
-            ai_player.onirect.x += speed
-            if self.check_collision(ai_player.onirect):
-                ai_player.onirect.x -= speed
-            else:
-                moved = True
+            directions.append((speed, 0))
         elif ai_player.onirect.x > runner.chararect1.x:
-            ai_player.onirect.x -= speed
-            if self.check_collision(ai_player.onirect):
-                ai_player.onirect.x += speed
-            else:
-                moved = True
-        # Y方向
+            directions.append((-speed, 0))
+
+        # Y方向の移動方向を決める
         if ai_player.onirect.y < runner.chararect1.y:
-            ai_player.onirect.y += speed
-            if self.check_collision(ai_player.onirect):
-                ai_player.onirect.y -= speed
-            else:
-                moved = True
+            directions.append((0, speed))
         elif ai_player.onirect.y > runner.chararect1.y:
-            ai_player.onirect.y -= speed
-            if self.check_collision(ai_player.onirect):
-                ai_player.onirect.y += speed
-            else:
+            directions.append((0, -speed))
+        if not directions:
+            print("update_ai_movement: no directions to move")
+            return
+        original_pos = ai_player.onirect.topleft
+        print(f"update_ai_movement: directions={directions}, original_pos={original_pos}")
+        for move_x, move_y in directions:
+            ai_player.onirect.x += move_x
+            ai_player.onirect.y += move_y
+            collision = self.check_collision(ai_player.onirect)
+            print(f"Trying move ({move_x}, {move_y}), collision={collision}")
+            if not collision:
                 moved = True
+                break
+            else:
+                ai_player.onirect.topleft = original_pos
+
+        if not moved:
+            # 衝突で動けなければ元の位置に戻す
+            ai_player.onirect.topleft = original_pos
+
         # 当たり判定(鬼がランナーを捕まえた)
         if ai_player.onirect.colliderect(runner.chararect1):
+            pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
             print("AI鬼に捕まりました!")
             self.state = "result"
             self.show_result("oni")
+        print(f"AI位置: {ai_player.onirect.topleft}")
     def play_local_game(self):
         # 初期化済みか確認
         if not hasattr(self, "local_initialized") or not self.local_initialized:
-            self.player_id == "local_player"
+            self.player_id = "local_player"
             self.all_players_on_screen[self.player_id] = Player("runner", 100, 100, "自分")
             self.ai_id = "ai_oni"
-            self.all_players_on_screen[self.ai_id] = Player("oni", 800, 300, "鬼ボット")
+            self.all_players_on_screen[self.ai_id] = Player("oni", 0, 300, "鬼ボット")
+            self.start_game_time = pg.time.get_ticks()
+            self.state = "playing" # プレイ状態に移行
             self.local_initialized = True # フラグを立てて初期化を1回だけにする
         screen.fill((0, 0, 0))
         self.handle_player_movement() # プレイヤーの操作
+        print(f"play_local_game: state = {self.state}")
         self.update_ai_movement() # AIの自動移動
+        print(f"update_ai_movement: state = {self.state}")
         self.draw() # ゲーム画面描画
     def draw_mode_select(self):
         screen.fill((30, 30, 30))
@@ -220,6 +262,12 @@ class Game:
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
         screen.blit(name_surface, (100, 400))
+        # モードトグルボタン
+        mode_text = "現在のモード:ノーマル" if self.game_mode == "normal" else "現在のモード:脱出"
+        self.toggle_mode_rect = pg.Rect(250, 0, 400, 60)
+        pg.draw.rect(screen, (50, 150, 200), self.toggle_mode_rect)
+        mode_surface = self.jpfont.render(mode_text, True, (255, 255, 255))
+        screen.blit(mode_surface, (self.toggle_mode_rect.x + 5, self.toggle_mode_rect.y + 8))
         # エラーメッセージ表示
         if self.ip_error_message:
             error_text = self.jpfont.render(self.ip_error_message, True, (255, 0, 0)) # 赤色で表示
@@ -232,7 +280,6 @@ class Game:
         self.title_button_rect = self.title_button_img.get_rect(topleft=(300, 450))
         screen.blit(self.title_button_img, self.title_button_rect)
         pg.display.flip()
-
     # ゲーム開始待機ロビー画面
     def draw_lobby(self):
         screen.blit(lobbyimg, (0, 0))
@@ -263,6 +310,8 @@ class Game:
                     if self.title_button_rect.collidepoint(event.pos):
                         self.ip_entered = True
                         self.send_connect_request()
+                    # モード切り替えボタンの判定
+                    self.handle_title_events(event)
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_TAB:
                         # TABキーで入力対象を切り替える
@@ -380,7 +429,12 @@ class Game:
 
     # 結果表示
     def show_result(self, winner):
-        screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
+        # screen.fill((0, 0, 0))  # 画面を黒に塗りつぶし
+        
+        # bgm停止
+        if pg.mixer.music.get_busy():
+            pg.mixer.music.stop()
+            self.current_bgm_path = None
 
         font = pg.font.SysFont(None, 64)
         if winner == "oni":
@@ -452,6 +506,8 @@ class Game:
             font = pg.font.SysFont(None, 36)
             timer_text = self.jpfont.render(f"残り時間: {remaining} 秒", True, (255, 255, 255))
             screen.blit(timer_text, (10, 10))
+        if self.game_mode == "escape":
+            screen.blit(self.goal_image, self.goal_pos)
         pg.display.flip()
 
     # タイトルの表示
@@ -484,6 +540,7 @@ class Game:
         moved = False
         speed = Player.oni_speed if my_player.role == "oni" else Player.player_speed
         rect = my_player.onirect if my_player.role == "oni" else my_player.chararect1
+        # print(my_player.chararect1.size)
 
         # 現在の座標を保存
         original_pos = rect.topleft
@@ -516,7 +573,7 @@ class Game:
             moved = True
         # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
         if self.state == "playing":
-            my_player = self.all_players_on_screen.get(self.player_id)
+            my_player = self.all_players_on_screen.get(self.player_id)        
             if my_player and my_player.role == "oni":
                 oni_rect = my_player.onirect
 
@@ -527,14 +584,18 @@ class Game:
                             runner_rect = other_player.chararect1
                             if oni_rect.colliderect(runner_rect):
                                 print("👹 鬼がランナーを捕まえた！")
+                                pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
                     
                                 # 鬼がサーバーに勝利報告
                                 msg = {"type": "game_result", "winner": "oni"}
                                 self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
 
-                                # このクライアントでは送信だけ行い、状態遷移は受信で処理
-                                return  # 他の動作を停止
-        # 当たり判定チェック
+        # --- 鬼がゴールにぶつかったら移動キャンセル ---
+        if self.game_mode == "escape" and hasattr(self, "goal_rect"):
+            if rect.colliderect(self.goal_rect) and my_player.role != "runner":
+                rect.topleft = original_pos
+                moved = False
+        # --- 障害物との当たり判定 ---
         if moved and self.collides_with_obstacles(rect, self.obstacles):
             # 衝突していたら元の位置に戻す
             rect.topleft = original_pos
@@ -553,6 +614,15 @@ class Game:
                     # print(f"[送信] 新しい位置: {pos}")
             except Exception as e:
                 print("[送信エラー]", e)
+        if self.game_mode == "escape" and my_player.role == "runner":
+                if rect.colliderect(self.goal_rect):
+                    print("ゴール到達!")
+                    self.state = "result"
+                    self.show_result("runner") # ランナーの勝利として処理
+                    if self.mode == "online":
+                        msg = {"type": "game_result", "winner":"runner"}
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    return
     # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
     def handle_common_events(self):
         for event in pg.event.get():
@@ -596,6 +666,20 @@ class Game:
         send_interval = 100
 
         while self.running:
+            # bgmの制御
+            target_bgm_path = None
+            if self.state == "lobby":
+                target_bgm_path = self.lobby_bgm_path
+            elif self.state in ["playing", "play_local"]:
+                target_bgm_path = self.game_bgm_path
+            if target_bgm_path and self.current_bgm_path != target_bgm_path:
+                try:
+                    pg.mixer.music.load(target_bgm_path)
+                    pg.mixer.music.play(-1)
+                    self.current_bgm_path = target_bgm_path
+                except pg.error as e:
+                    print(f"bgmの再生失敗:{e}")
+                    self.current_bgm_path = None
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     self.running = False
@@ -630,24 +714,34 @@ class Game:
                         self.last_state_request_time = current_time
                     except Exception as e:
                         print(f"[送信エラー] ロビー更新要求: {e}")
-            elif self.state == "playing" and current_time - last_send_time > send_interval:
-                try:
-                    if self.mode == "online":
+            elif self.state == "playing":
+                # 通信はオンラインの時だけ実行
+                if self.mode == "online" and current_time - last_send_time > send_interval:
+                    try:
                         msg = {"type": "state_request"}
                         self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                         last_send_time = current_time
-                except Exception as e:
-                    print("[送信エラー]", e)
-
-            if self.state == "playing":
+                    except Exception as e:
+                        print("[送信エラー]", e)
                 self.handle_player_movement()
+                if self.mode == "local":
+                    self.update_ai_movement()
                 self.draw()
                 elapsed = pg.time.get_ticks() - self.start_game_time
                 if elapsed >= self.time_limit:
                     self.state = "result"
-                    self.show_result("runner")
-                    msg = {"type": "game_result", "winner": "runner"}
-                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    # 🔽 escapeモードのときは鬼の勝ち
+                    if self.game_mode == "escape":
+                        self.show_result("oni")  # 鬼の勝利(escapeモード)
+                        if self.mode == "online":
+                            msg = {"type": "game_result", "winner": "oni"}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                    else:
+                        self.show_result("runner")  # ノーマルモードではランナー勝利
+                        if self.mode == "online":
+                            msg = {"type": "game_result", "winner": "runner"}
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+
             elif self.state == "result":
                 pass # ★ ここは変更なし。show_resultが独自にループを持つため
 

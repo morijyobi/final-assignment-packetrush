@@ -11,7 +11,7 @@ server_socket.settimeout(0.5)
 retry_votes = set()  # 再試合希望者のIDを保存
 
 players = {}
-REQUIRED_PLAYERS = 2
+REQUIRED_PLAYERS = 4
 game_started = False
 print("サーバー起動: 0.0.0.0:5000 で待機中...")
 # プレイヤーをアドレスで検索
@@ -36,8 +36,8 @@ def calculate_new_position(pos, direction, step=5):
 def assign_initial_positions():
     positions_runner = [
         [0, 500],    # 左下
-        [920, 0],    # 右上
-        [920, 600],  # 右下
+        [720, 100],    # 右上
+        [720, 500],  # 右下
     ]
     positions_oni = [
         [0, 100],
