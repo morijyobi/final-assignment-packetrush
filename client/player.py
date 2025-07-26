@@ -8,10 +8,12 @@ class Player:
     player_speed = 5
     oni_speed = 6
     p_image = 0
+    caught = False
     image_list = ["client/assets/images/player1.png", "client/assets/images/player2.png", "client/assets/images/player3.png", "client/assets/images/player4.png"]
-    def __init__(self, role="runner", x=100, y=100, name=""):
+    def __init__(self, role="runner", x=100, y=100, name="", caught = False):
         self.role = role
         self.name = name
+        self.caught = caught
         self.x, self.y = x, y
         # デプロイ時にパスのエラーを解消するために使った関数
         def resource_path(relative_path):
