@@ -14,6 +14,7 @@ class Player:
         self.role = role
         self.name = name
         self.caught = caught
+        self.escaped = False
         self.x, self.y = x, y
         # デプロイ時にパスのエラーを解消するために使った関数
         def resource_path(relative_path):
