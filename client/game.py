@@ -11,6 +11,7 @@ from pygame import mixer
 import ipaddress
 import tkinter as tk
 from tkinter import messagebox
+import traceback
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
 # デプロイするときにファイルのパスでエラーが出てしまうのでそれを解消する関数
@@ -69,6 +70,8 @@ class Game:
         self.last_state_request_time = pg.time.get_ticks()
         self.state_request_interval = 200  # ms
         self.clock = pg.time.Clock()
+        self.winner = None # ← 勝者情報を初期化
+        self.receive_thread = None
         self.state = "mode_select"  # 起動直後はモード選択画面
         self.mode = None # "local"または"online"を保持
         self.game_mode = "normal" # または"escape"
@@ -134,6 +137,55 @@ class Game:
             rect = pg.Rect(x, y, width, height)
             self.obstacle_rects.append(rect)
         self.result_shown = False  # 勝敗表示済みフラグ
+    def restart_receive_loop(self):
+        # すでにスレッドが動いているか確認して止まっていたら再起動
+        if not self.receive_thread or not self.receive_thread.is_alive():
+            self.running = True
+            self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
+            self.receive_thread.start()
+            print("receive_loop を再起動しました")
+        else:
+            print("receive_loop はすでに実行中です")
+
+    def reset_game_state(self):
+    # ゲームの状態変数を初期値にリセット
+        self.players = {}
+        self.all_players_on_screen = {}
+        self.start_game_time = 0
+        self.input_text = ""
+        self.running = True
+        self.player_id = None
+        self.ip_entered = False
+        self.last_send_time = 0
+        self.last_state_request_time = pg.time.get_ticks()
+        self.current_player_count = 0
+        self.ip_error_message = ""
+        self.result_shown = False
+        self.result_winner = None
+        self.mode = None  # ローカル・オンライン問わずリセット
+        self.server_ip = ""  # IPをリセット
+        self.player_name = ""  # 名前もリセット
+
+        if hasattr(self, "local_initialized"):
+            del self.local_initialized
+        if hasattr(self, "ai_id"):
+            del self.ai_id
+        # 各プレイヤーのescape/caught状態を初期化
+        for player in self.all_players_on_screen.values():
+            if hasattr(player, "escaped"):
+                player.escaped = False
+            if hasattr(player, "caught"):
+                player.caught = False
+        # 状態を戻す
+        if self.mode == "online":
+            self.state = "input_ip"
+            if self.player_id:
+                disconnect_msg = {"type": "disconnect", "player_id": self.player_id}
+                self.socket.sendto(json.dumps(disconnect_msg).encode(), self.server_addr)
+        else:
+            self.state = "mode_select"
+        print("[ゲームリセット] ゲーム状態が初期化されました。")
+        self.winner = None # 勝者状態を完全リセット
     def handle_title_events(self, event):
         if event.type == pg.MOUSEBUTTONDOWN:
             if self.toggle_mode_rect.collidepoint(event.pos):
@@ -195,7 +247,7 @@ class Game:
 
         # 当たり判定(鬼がランナーを捕まえた)
         if ai_player.onirect.colliderect(runner.chararect1):
-            pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
+            pg.mixer.Sound(resource_path("client/assets/sounds/倒れる.mp3"))
             print("AI鬼に捕まりました!")
             self.state = "result"
             self.show_result("oni")
@@ -350,7 +402,8 @@ class Game:
         self.server_addr = (self.server_ip, self.server_port)
         connect_msg = {
             "type": "connect_request",
-            "name": self.player_name or "Player"
+            "name": self.player_name or "Player",
+            "game_mode": self.game_mode # ←"escape" or "normal"
             }
         try:
             self.socket.sendto(json.dumps(connect_msg).encode(), self.server_addr)
@@ -373,6 +426,7 @@ class Game:
 
     # サーバーからのメッセージ受信ループ
     def receive_loop(self):
+        print("[スレッド] receive_loop 開始")
         while self.running:
             try:
                 data, _ = self.socket.recvfrom(2048)
@@ -391,6 +445,7 @@ class Game:
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"
                     self.start_game_time = pg.time.get_ticks()
+                    print(f"[DEBUG] 状態を playing に設定しました (state = {self.state})")
                     #self.draw_lobby() #ロビー画面に移動
                     # self.draw()  # マップ画面に遷移するメソッド
 
@@ -398,9 +453,12 @@ class Game:
                     self.players = message["players"]
                     for pid, pdata in self.players.items():
                         name = pdata.get("name", f"Player{pid[:4]}") # 名前を取得
-                        caught = False
+                        caught = pdata.get("caught", False)
+                        escaped = pdata.get("escaped", False)
                         if pid not in self.all_players_on_screen:
                             p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name, caught)
+                            p.caught = caught
+                            p.escaped = escaped
                             self.all_players_on_screen[pid] = p
                             
                         else:
@@ -409,12 +467,14 @@ class Game:
                                 p.onirect.topleft = pdata["pos"]
                             else:
                                 p.chararect1.topleft = pdata["pos"]
-
+                            p.escaped = escaped # 毎回上書き
+                            p.caught = caught # 毎回上書きする
                 elif msg_type == "game_result":
-                    winner = message.get("winner")
+                    print("[受信]勝者情報を受信:", message)
+                    self.winner = message.get("winner")
                     self.state = "result"
-                    self.show_result(winner)
-                    
+                    self.show_result(self.winner)
+                    print("[受信] 勝者情報を受信:", message)
                 elif msg_type == "retry_start":
                     self.result_shown = False
                     self.state = "lobby"
@@ -422,9 +482,7 @@ class Game:
                     self.all_players_on_screen.clear()
                     self.players.clear()
                     self.draw_lobby()
-
-
-
+                    self.restart_receive_loop()
                 else:
                     print(f"[警告] サーバーから未知の応答: {message}")
 
@@ -468,18 +526,26 @@ class Game:
                     pg.quit()
                     sys.exit()
                 elif event.type == pg.MOUSEBUTTONDOWN:
-                    -print("Click pos:", event.pos)
+                    print("Click pos:", event.pos)
                     if self.exit_button_rect.collidepoint(event.pos):
                         pg.quit()
                         sys.exit()
+                    # もう一度ボタンのクリックイベント処理
                     elif self.retry_button_rect.collidepoint(event.pos):
                         if self.server_addr:
                             print("[🔁] 再試合希望を送信")
                             msg = {"type": "retry_request", "player_id": self.player_id}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                         self.reset_game_state()
+                        if self.mode == "local": 
+                            self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
+                        elif self.mode == "online":
+                            self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
+                            self.ip_entered = False
+                            # 再接続要求を送る
+                            self.send_connect_request()
                         waiting = False
-
+            pg.time.delay(100)  # CPUへの負荷軽減
 
             self.clock.tick(60)
         # show_result を抜けた後、run メソッドのループが継続し、
@@ -504,6 +570,8 @@ class Game:
             if player.role == "oni":
                 screen.blit(player.oni_image, player.onirect)
             else:
+                if getattr(player, "caught", False):
+                    continue
                 screen.blit(player.player_image, player.chararect1)
         # 残り時間の表示
         if hasattr(self, "start_game_time") and hasattr(self, "time_limit"):
@@ -546,12 +614,8 @@ class Game:
         moved = False
         speed = Player.oni_speed if my_player.role == "oni" else Player.player_speed
         rect = my_player.onirect if my_player.role == "oni" else my_player.chararect1
-        # print(my_player.chararect1.size)
-
-        # 現在の座標を保存
         original_pos = rect.topleft
 
-        # 新しい座標を計算
         if keys[pg.K_w]:
             rect.y -= speed
             moved = True
@@ -564,88 +628,89 @@ class Game:
         if keys[pg.K_d]:
             rect.x += speed
             moved = True
-        # 画面外に行けないようにする
+
+        # 画面外に行かせない
         if rect.y < 0:
             rect.y = 0
-            moved = True
         if rect.y > config.SCREEN_HEIGHT - rect.height:
             rect.y = config.SCREEN_HEIGHT - rect.height
-            moved = True
         if rect.x < 0:
             rect.x = 0
-            moved = True
         if rect.x > config.SCREEN_WIDTH - rect.width:
             rect.x = config.SCREEN_WIDTH - rect.width
-            moved = True
-        # すでに全プレイヤーの描画情報が self.all_players_on_screen にある前提
-        # 修正できなかったらここからコメントアウトする
-        if self.state == "playing":
-            my_player = self.all_players_on_screen.get(self.player_id)        
-            if my_player and my_player.role == "oni":
-                oni_rect = my_player.onirect
 
-                for pid, other_player in self.all_players_on_screen.items():
-                        if pid == self.player_id:
-                            continue  # 自分自身はスキップ
-                        if other_player.role == "runner":
-                            runner_rect = other_player.chararect1
-                            if oni_rect.colliderect(runner_rect):
+        # --- 当たり判定: 鬼がランナーを捕まえた場合 ---
+        if self.state == "playing" and my_player.role == "oni":
+            oni_rect = my_player.onirect
+            for pid, other_player in self.all_players_on_screen.items():
+                if pid == self.player_id or other_player.role != "runner":
+                    continue
+                runner_rect = other_player.chararect1
+                if oni_rect.colliderect(runner_rect):
+                    if not getattr(other_player, "caught", False):
+                        print("👹 鬼がランナーを捕まえた！")
+                        pg.mixer.Sound(resource_path("client/assets/sounds/倒れる.mp3"))
+                        other_player.caught = True  # 捕まった印
+            # すべてのランナーが caught なら勝利
+            runners = [p for p in self.all_players_on_screen.values() if p.role == "runner"]
+            all_caught = all(getattr(r, "caught", False) for r in runners)
+            # print("ランナーの状態:")
+            # for r in runners:
+            #     print(f"  - {getattr(r, 'name', '')}: caught={getattr(r, 'caught', False)}")
+            if runners and all_caught:
+                print("👹 すべてのランナーが捕まりました！鬼の勝利！")
+                msg = {"type": "game_result", "winner": "oni"}
+                self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                self.winner = "oni"
+                self.state = "result"
+                return
 
-                                if not hasattr(other_player, "caught") or not other_player.caught:
-                                    print("👹 鬼がランナーを捕まえた！")
-      　　　　　　　　　　　　　　　　 pg.mixer.Sound("client/assets/sounds/倒れる.mp3").play()
-                                    other_player[pid].caught = True  # 捕まったマークをつける
-                                runners = [
-                                    p for pid, p in self.all_players_on_screen.items()
-                                    if p.role == "runner"
-                                ]
-
-                                print(f"🎮 全プレイヤー数: {len(self.all_players_on_screen)}")
-                                print(f"👟 ランナー数: {len(runners)}")
-
-                                for i, r in enumerate(runners):
-                                    print(f"  - ランナー{i}: caught={getattr(r, 'caught', False)}")    
-                                all_caught = all(
-                                    getattr(p, "caught", False) for pid, p in self.all_players_on_screen.items()
-                                    if p.role == "runner"
-                                )
-                                if all_caught:
-                                    msg = {"type": "game_result", "winner": "oni"}
-                                    self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-            # --- 鬼がゴールにぶつかったら移動キャンセル ---
+        # ゴール到達チェック（逃走モード）
         if self.game_mode == "escape" and hasattr(self, "goal_rect"):
             if rect.colliderect(self.goal_rect) and my_player.role != "runner":
                 rect.topleft = original_pos
                 moved = False
-        # --- 障害物との当たり判定 ---
-            #ここまでコメントアウト
-            
-        #　修正できなかったら以下のコメントを外せば一人捕まった時点で鬼の勝利になっていた状態に戻せる                             
-        # if self.state == "playing":
-        #     my_player = self.all_players_on_screen.get(self.player_id)
-        #     if my_player and my_player.role == "oni":
-        #         oni_rect = my_player.onirect
 
-        #         for pid, other_player in self.all_players_on_screen.items():
-        #             if pid == self.player_id:
-        #                 continue  # 自分自身はスキップ
-        #             if other_player.role == "runner":
-        #                 runner_rect = other_player.chararect1
-        #                 if oni_rect.colliderect(runner_rect):
-        #                     print("👹 鬼がランナーを捕まえた！")
-                    
-        #                     # 鬼がサーバーに勝利報告
-        #                     msg = {"type": "game_result", "winner": "oni"}
-        #                     self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-        #                     # このクライアントでは送信だけ行い、状態遷移は受信で処理
-        #                     return  # 他の動作を停止
-        # 当たり判定チェック
-
+        # 障害物との衝突
         if moved and self.collides_with_obstacles(rect, self.obstacles):
-            # 衝突していたら元の位置に戻す
             rect.topleft = original_pos
-            moved = False  # 移動キャンセル
+            moved = False
 
+        # ランナーがゴールに到達
+        if self.game_mode == "escape" and my_player.role == "runner":
+            if rect.colliderect(self.goal_rect) and not getattr(my_player, "escaped", False):
+                if not getattr(my_player, "escaped", False):
+                    print("ランナーがゴールに到達！")
+                    my_player.escaped = True # このプレイヤーは脱出済みにする
+                    # サーバーに「脱出済み」を伝える
+                    if self.mode == "online":
+                        msg = {
+                            "type": "escaped",
+                            "player_id": self.player_id
+                        }
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                # ランナーの一覧を取得
+                runners = [
+                    p for p in self.all_players_on_screen.values()
+                    if p.role == "runner"
+                ]
+                # 脱出したランナー数の確認
+                escaped_count = 0
+                for r in runners:
+                    if getattr(r, "escaped", False):
+                        escaped_count += 1
+                print(f"[チェック]脱出済みランナー数:{escaped_count}/{len(runners)}")
+                # 全員がゴールしたかチェック
+                if escaped_count == len(runners) and len(runners) > 0:
+                    print("全ランナーが脱出!人間の勝利!")
+                    self.state = "result"
+                    self.show_result("runner") # 人間の勝利
+                    if self.mode == "online":
+                        msg = {"type": "game_result", "winner": "runner"}
+                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                # return
+
+        # 位置更新を送信
         if moved:
             pos = [rect.x, rect.y]
             update_msg = {
@@ -656,18 +721,9 @@ class Game:
             try:
                 if self.mode == "online":
                     self.socket.sendto(json.dumps(update_msg).encode(), self.server_addr)
-                    # print(f"[送信] 新しい位置: {pos}")
             except Exception as e:
                 print("[送信エラー]", e)
-        if self.game_mode == "escape" and my_player.role == "runner":
-                if rect.colliderect(self.goal_rect):
-                    print("ゴール到達!")
-                    self.state = "result"
-                    self.show_result("runner") # ランナーの勝利として処理
-                    if self.mode == "online":
-                        msg = {"type": "game_result", "winner":"runner"}
-                        self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
-                    return
+
     # ウィンドウを閉じる処理(それぞれの場所で同じ処理が書かれていることが多いので使わなくてもよい)
     def handle_common_events(self):
         for event in pg.event.get():
@@ -760,6 +816,7 @@ class Game:
                     except Exception as e:
                         print(f"[送信エラー] ロビー更新要求: {e}")
             elif self.state == "playing":
+                print("ゲーム画面を描画中")
                 # 通信はオンラインの時だけ実行
                 if self.mode == "online" and current_time - last_send_time > send_interval:
                     try:
@@ -777,57 +834,34 @@ class Game:
                     self.state = "result"
                     # 🔽 escapeモードのときは鬼の勝ち
                     if self.game_mode == "escape":
+                        self.winner = "oni"
                         self.show_result("oni")  # 鬼の勝利(escapeモード)
                         if self.mode == "online":
                             msg = {"type": "game_result", "winner": "oni"}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                     else:
+                        self.winner = "runner"
                         self.show_result("runner")  # ノーマルモードではランナー勝利
                         if self.mode == "online":
                             msg = {"type": "game_result", "winner": "runner"}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
 
             elif self.state == "result":
-                pass # ★ ここは変更なし。show_resultが独自にループを持つため
-
+                if not self.result_shown and self.winner:
+                    self.result_shown = True
+                    self.show_result(self.winner)
+                    self.state = "mode_select"
             # self.result_shown = False # この行を削除
             self.clock.tick(60)
 
-    def reset_game_state(self):
-        # ゲームの状態変数を初期値にリセット
-        self.start_game_time = 0
-        self.input_text = ""
-        # self.role = "runner" # 役割は再選択できるようにするか、固定するか検討
-        self.running = True # メインループは継続
-        # self.server_ip = "" # IPアドレスを再入力させる場合はリセット
-        # self.player_name = "" # プレイヤー名を再入力させる場合はリセット
-        self.player_id = None
-        self.ip_entered = False
-        self.last_send_time = 0
-        self.last_state_request_time = pg.time.get_ticks()
-        self.current_player_count = 0
-        self.ip_error_message = ""
-
-        # 全てのプレイヤーオブジェクトをクリア
-        self.all_players_on_screen = {}
-
-        # ローカルプレイの初期化フラグをリセット
-        if hasattr(self, "local_initialized"):
-            del self.local_initialized
-
-        # 状態をモード選択またはIP入力画面に戻す
-        if self.mode == "online":
-            self.state = "input_ip" # オンラインならIP再入力から
-            self.server_ip = "" # IPをリセットして再入力を促す
-            self.player_name = "" # 名前もリセット
-        else: # "local" モードの場合
-            self.state = "mode_select" # ローカルならモード選択から
-            self.mode = None # モードもリセット
-
-        self.result_shown = False # 結果表示済みフラグをリセット
-        print("[ゲームリセット] ゲーム状態が初期化されました。")
     
-            
-if __name__ == "__main__":
-    game = Game()
-    game.run()
+try:
+    if __name__ == "__main__":
+        game = Game()
+        game.run()
+except Exception as e:
+    with open("error.log", "w") as f:
+        traceback.print_exc(file=f)
+    import time
+    print("エラーが発生しました。error.log を確認してください。")
+    time.sleep(5)

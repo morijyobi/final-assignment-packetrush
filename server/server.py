@@ -13,6 +13,8 @@ retry_votes = set()  # 再試合希望者のIDを保存
 players = {}
 REQUIRED_PLAYERS = 4
 game_started = False
+game_mode = "normal"
+escaped_players = set()
 print("サーバー起動: 0.0.0.0:5000 で待機中...")
 # プレイヤーをアドレスで検索
 def find_player_by_addr(addr):
@@ -79,8 +81,14 @@ def process_message(message, addr):
     msg_type = message.get("type")
     
     if msg_type == "connect_request":
+        global game_started
+        game_started = False
         player_id = str(uuid.uuid4())
         name = message.get("name", "Player")
+        if "game_mode" in message:
+            global game_mode
+            game_mode = message["game_mode"]
+            print(f"[モード設定]ゲームモード:{game_mode}")
         players[player_id] = {
             "id": player_id,
             "name": name,
@@ -114,7 +122,9 @@ def process_message(message, addr):
                     "id": pid,
                     "name": p["name"],
                     "pos": p["pos"],
-                    "role": p["role"]
+                    "role": p["role"],
+                    "escaped": p.get("escaped", False),
+                    "caught": p.get("caught", False)
                 } for pid, p in players.items()
             }
         }
@@ -128,7 +138,18 @@ def process_message(message, addr):
         if player_id in players:
             players[player_id]["pos"] = new_pos
             # print(f"[更新] {player_id} の位置を {new_pos} に更新")
-
+            # 脱出チェック(ゴール座標に重なったか)
+            if game_mode == "escape": # <-脱出モード限定
+                goal_x, goal_y = [600, 100]
+                if abs(new_pos[0] - goal_x) < 30 and abs(new_pos[1] - goal_y) < 30:
+                    players[player_id]["escaped"] = True
+                    print(f"[脱出]{player_id}が脱出しました")
+                    # 脱出済みの人数を数える
+                    total_runners = sum(1 for p in players.values() if p["role"] == "runner")
+                    escaped_runners = sum(1 for p in players.values() if p.get("escaped"))
+                    print(f"[チェック]脱出済みランナー数:{escaped_runners}/{total_runners}")
+                    if escaped_runners == total_runners:
+                        send_game_result("runner") # 全員脱出したので人間勝利
             # 👇 鬼がランナーに接触しているかをチェック（ゲーム開始後のみ）
             if game_started:
                 oni_pos = None
@@ -142,9 +163,11 @@ def process_message(message, addr):
                             runner_pos = p["pos"]
                             # 20px以内なら接触とみなす（大きさに合わせて調整）
                             if abs(oni_pos[0] - runner_pos[0]) < 30 and abs(oni_pos[1] - runner_pos[1]) < 30:
-                                print(f"[👹接触] 鬼がランナーを捕まえました！")
-                                send_game_result("oni")
-                                break
+                                if not p.get("caught", False):
+                                    print(f"[👹接触] 鬼がランナーを捕まえました！")
+                                    p["caught"] = True # 捕まったフラグを立てる
+                                    # send_game_result("oni")
+                                    break
         else:
             print(f"[警告] {player_id} は登録されていません")
     elif msg_type == "game_result":
@@ -173,25 +196,39 @@ def process_message(message, addr):
         
             if len(retry_votes) == len(players):
                 print("[再試合] 全員の再試合リクエストが揃いました。ゲームを再開します。")
+
                 retry_votes.clear()
 
-                # ✅ まず全員に「retry_start」メッセージを送ってロビー画面に戻す
+                # まず retry_start を送ってロビーへ戻す
                 retry_msg = {"type": "retry_start"}
                 for p in players.values():
                     server_socket.sendto(json.dumps(retry_msg).encode(), p["addr"])
 
-                # 少し待ってからゲーム開始（ロビーが描画される時間を与える）
-                time.sleep(1.0)
+                time.sleep(1.0)  # 少し待つ（ロビー描画）
 
-                assign_roles()
-                start_game()
-
-
+                players.clear()  # ここでクリア（遅らせる）
+    elif msg_type == "disconnect":
+        player_id = message.get("player_id")
+        if player_id in players:
+            print(f"[切断]プレイヤー{player_id}が切断しました")
+            del players[player_id]
+    elif msg_type == "escaped":
+        player_id = message.get("player_id")
+        if player_id in players:
+            escaped_players.add(player_id)
+            print(f"[逃走報告]{player_id}が脱出しました")
+            total_runners = len([p for p in players.values() if p["role"] == "runner"])
+            print(f"[チェック]脱出済みランナー数:{len(escaped_players)}/{total_runners}")
+            if len(escaped_players) == total_runners and total_runners > 0:
+                print("[全員脱出]人間の勝利")
+                send_game_result("runner")
     else:
         print(f"[警告] サーバーから未知の応答: {message}")
 # プレイヤーの役割の割り振り
 def assign_roles():
     player_ids = list(players.keys())
+    if not player_ids:
+        return
     oni_id = player_ids[0]  # 先頭を鬼にする（適宜ランダムでも可）
 
     for pid in player_ids:
@@ -213,11 +250,15 @@ def start_game():
         p["rematch_agreed"] = False
 
     # 各クライアントにゲーム開始を通知
+    start_msg = {"type": "start_game"}
     for pid in players:
         addr = players[pid].get("addr")
         if addr:
-            start_msg = {"type": "start_game"}
-            server_socket.sendto(json.dumps(start_msg).encode(), addr)
+            try:
+                server_socket.sendto(json.dumps(start_msg).encode(), addr)
+                print(f"[送信] start_game メッセージを {p['name']}({pid}) に送信")
+            except Exception as e:
+                print(f"[送信エラー] {pid}: {e}")
 
     print("✅ プレイヤーが揃いました。ゲームを開始します。")
  
@@ -244,6 +285,7 @@ def send_game_result(winner):
         "type": "game_result",
         "winner": winner
     }
+    print("[送信] 勝敗結果を全員に送信:", winner)
     for p in players.values():
         try:
             server_socket.sendto(json.dumps(result_msg).encode(), p["addr"])
@@ -252,7 +294,6 @@ def send_game_result(winner):
     game_started = False  # ゲーム終了
     print(f"[🏁ゲーム終了] 勝者: {winner}")
     reset_server_game() # ★ ここでサーバーのゲーム状態をリセット
-    
     
 # 🔄 受信ループ開始
 receive_loop()
