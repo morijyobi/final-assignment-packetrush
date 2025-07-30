@@ -106,17 +106,17 @@ class Game:
 
         # 障害物データ
         self.obstacles = [
-            {"type": "momiji", "pos": (230, 180)},
-            {"type": "momiji", "pos": (230, 260)},
-            {"type": "momiji", "pos": (230, 340)},
-            {"type": "otera", "pos": (380, 50)},
-            {"type": "torii", "pos": (383, 130)},
-            {"type": "iwa", "pos": (350, 250)},
-            {"type": "iwa", "pos": (450, 330)},
-            {"type": "ido", "pos": (500, 90)},
-            {"type": "momiji", "pos": (530, 180)},
-            {"type": "momiji", "pos": (530, 260)},
-            {"type": "momiji", "pos": (530, 340)}
+            {"type": "momiji", "pos": (230, 180), "width": 50, "height":50},# 高さと横幅を追加
+            {"type": "momiji", "pos": (230, 260), "width": 50, "height":50},
+            {"type": "momiji", "pos": (230, 340), "width": 50, "height":50},
+            {"type": "otera", "pos": (380, 50), "width": 65, "height":50},
+            {"type": "torii", "pos": (383, 130), "width": 55, "height":40},
+            {"type": "iwa", "pos": (350, 250), "width": 15, "height":15},
+            {"type": "iwa", "pos": (450, 330), "width": 15, "height":15},
+            {"type": "ido", "pos": (500, 90), "width": 15, "height":15},
+            {"type": "momiji", "pos": (530, 180), "width": 50, "height":50},
+            {"type": "momiji", "pos": (530, 260), "width": 50, "height":50},
+            {"type": "momiji", "pos": (530, 340), "width": 50, "height":50}
         ]
         self.obstacle_rects = []
         for obs in self.obstacles:
@@ -290,8 +290,8 @@ class Game:
     # プレイヤーと障害物の当たり判定を確認
     def collides_with_obstacles(self, rect, obstacles):
         for obs in obstacles:
-            # pos を元に Rect を作成（仮に 50x50 サイズなら）
-            obs_rect = pg.Rect(obs["pos"][0], obs["pos"][1], 50, 50)
+            #  obstaclesのwidthとheightを元に Rect を作成
+            obs_rect = pg.Rect(obs["pos"][0], obs["pos"][1], obs["width"], obs["height"])
             if rect.colliderect(obs_rect):
                 return True
         return False
