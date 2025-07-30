@@ -59,6 +59,8 @@ class Game:
         self.input_text = ""
         self.role = role
         self.running = True
+        self.my_local_ip = self.get_my_local_ip() # 自身のIPアドレスを取得して格納
+        print(f"デバッグ: 取得されたローカルIPアドレスは {self.my_local_ip} です。")
         self.server_ip = ""#後でタイトルかロビー画面で入力できるようにする
         self.server_port = config.SERVER_PORT
         self.server_addr = None
@@ -295,10 +297,22 @@ class Game:
             if rect.colliderect(obs_rect):
                 return True
         return False
+    def get_my_local_ip(self):
+        """自身のローカルIPアドレスを取得する"""
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # 外部のどこかに一時的に接続を試みることで、自身のローカルIPアドレスを取得
+            s.connect(('8.8.8.8', 1))
+            IP = s.getsockname()[0]
+        except Exception:
+            IP = '127.0.0.1' # 取得できなかった場合はループバックアドレス
+        finally:
+            s.close()
+        return IP
     # IPアドレス入力画面の描画
     def draw_ip_input(self):
         screen.fill((30, 30, 30))
-        explanation = self.jpfont.render("TABキーで入力する項目変更、Enterで確定", True, (255, 255, 255))
+        # explanation = self.jpfont.render("TABキーで入力する項目変更、Enterで確定", True, (255, 255, 255))
         ip_color = (0, 255, 0) if self.input_mode == "ip" else (100, 100, 100)
         name_color = (0, 255, 255) if self.input_mode == "name" else (100, 100, 100)
         # ラベル
@@ -308,8 +322,9 @@ class Game:
         input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
         name_surface = self.font.render(self.player_name, True, (0, 255, 255))
         # 表示位置
+
         screen.blit(titleimg, (0, 0))
-        screen.blit(explanation, (50, 170))
+        # screen.blit(explanation, (50, 170))
         screen.blit(title, (100, 250))
         screen.blit(input_surface, (100, 300))
         screen.blit(title_name, (100, 350))
@@ -335,6 +350,12 @@ class Game:
         self.title_button_img = pg.transform.scale(self.title_button_img, (250, 100))
         self.title_button_rect = self.title_button_img.get_rect(topleft=(300, 450))
         screen.blit(self.title_button_img, self.title_button_rect)
+        # ★★★ 描画順序を変更: 他の描画の後、flipの直前に移動 ★★★
+        # ホストとしてプレイする場合の参考情報として表示
+        ip_text = self.jpfont.render(f"ホストの場合のIP: {self.my_local_ip}", True, (255, 255, 255)) 
+        # config.SCREEN_WIDTH と config.SCREEN_HEIGHT を使う
+        screen.blit(ip_text, (100,170))
+        # ★★★ 描画順序変更 ここまで ★★★
         pg.display.flip()
     # ゲーム開始待機ロビー画面
     def draw_lobby(self):
