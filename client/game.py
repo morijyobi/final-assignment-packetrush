@@ -582,6 +582,13 @@ class Game:
                 elif event.type == pg.MOUSEBUTTONDOWN:
                     print("Click pos:", event.pos)
                     if self.exit_button_rect.collidepoint(event.pos):
+                        # ゲーム終了
+                        msg = {"type": "game_end"}
+                        try:
+                            self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
+                            print("ゲームエンドのメッセージ")
+                        except Exception as e:
+                            print("ゲームエンドのメッセージのエラー")
                         pg.quit()
                         sys.exit()
                     # もう一度ボタンのクリックイベント処理
