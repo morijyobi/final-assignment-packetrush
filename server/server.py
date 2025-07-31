@@ -9,13 +9,31 @@ server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind(("0.0.0.0", 5000))
 server_socket.settimeout(0.5)
 retry_votes = set()  # 再試合希望者のIDを保存
-
+items = {
+    "item_001": {"id": "item_1", 
+                 "type": "speed", 
+                 "pos": [300, 400], 
+                 "active": True,
+                 "respawn_time": 0 # 秒単位のUNIx時間
+                 },
+    "item_002": {"id": "item_2",
+                 "type": "speed", 
+                 "pos": [500, 200], 
+                 "active": True,
+                 "respawn_time": 0}
+}
 players = {}
 REQUIRED_PLAYERS = 4
 game_started = False
 game_mode = "normal"
 escaped_players = set()
 print("サーバー起動: 0.0.0.0:5000 で待機中...")
+def update_items():
+    now = int(time.time() * 1000) # ミリ秒単位のUNIX時間
+    for item in items.values():
+        if not item["active"] and now >= item["respawn_time"]:
+            item["active"] = True
+            print(f"[再出現]{item['id']}が復活しました")
 # プレイヤーをアドレスで検索
 def find_player_by_addr(addr):
     for pid, player in players.items():
@@ -70,7 +88,11 @@ def receive_loop():
                 continue
             # ここでmessageだけ渡す
             threading.Thread(target=process_message, args=(message, addr)).start()
+            # ここでアイテムの再出現チェックを毎ループ行う
+            update_items()
         except socket.timeout:
+            # タイムアウト時もupdate_itemsを呼んで再出現チェックを続ける
+            update_items()
             continue
         except Exception as e:
             print(f"[受信エラー] {e}")
@@ -126,7 +148,16 @@ def process_message(message, addr):
                     "escaped": p.get("escaped", False),
                     "caught": p.get("caught", False)
                 } for pid, p in players.items()
-            }
+            },
+            # アイテム情報を含める
+            "items": [
+                {
+                    "id": item_id,
+                    "type": item["type"], 
+                    "pos": item["pos"], 
+                    "active": item["active"]}
+                for item_id, item in items.items()
+            ]
         }
         server_socket.sendto(json.dumps(game_state).encode(), addr)
     elif msg_type == "start_game":
@@ -168,6 +199,16 @@ def process_message(message, addr):
                                     p["caught"] = True # 捕まったフラグを立てる
                                     # send_game_result("oni")
                                     break
+            # アイテムの衝突判定
+            for item in items.values():
+                if item["active"]:
+                    item_x, item_y = item["pos"]
+                    px, py = new_pos
+                    # 半径30以内に入ったら取得とみなす
+                    if abs(px - item_x) < 30 and abs(py - item_y) < 30:
+                        item["active"] = False
+                        item["respawn_time"] = int(time.time() * 1000) + 10000 # 10秒後
+                        print(f"[アイテム取得]{player_id}が{item['type']}を取得")
         else:
             print(f"[警告] {player_id} は登録されていません")
     elif msg_type == "game_result":
