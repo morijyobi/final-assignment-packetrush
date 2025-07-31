@@ -54,6 +54,7 @@ class Game:
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
         self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
         self.title_button_img = pg.image.load(resource_path("client/assets/images/titlebutton.png"))
+        self.robby_exit_img = pg.image.load(resource_path("client/assets/images/exitbutton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -345,11 +346,21 @@ class Game:
         # received_data = json.loads(data.decode())
         # p_count = received_data.get("player_count", 0)
         max_players = 4  # 最大プレイヤー数
-        
+        self.robby_exit_button_img = pg.transform.scale(self.robby_exit_img, (150, 80))
+        self.robby_exit_button_rect = self.robby_exit_button_img.get_rect(topleft=(650, 0))
+        screen.blit(self.robby_exit_button_img, self.robby_exit_button_rect)
+
         text = self.jpfont.render(f"待機:{self.current_player_count}/{max_players}", True, (255, 255, 255))
         screen.blit(text, (100, 250))
         # screen.blit(text, (100, 250))
-
+        for event in pg.event.get():
+            if event.type == pg.MOUSEBUTTONDOWN:
+                if self.robby_exit_button_rect.collidepoint(event.pos):
+                    #退出する前の自分がサーバーに残ったままになっている
+                    self.state = "mode_select" # ロビー画面からモード選択画面に戻る
+                    disconnect_msg = {"type": "disconnect", "player_id": self.player_id}
+                    self.socket.sendto(json.dumps(disconnect_msg).encode(), self.server_addr)
+                    self.reset_game_state() # ゲーム状態をリセット
         pg.display.flip()
 
     # ロビーでのIP入力ループ
@@ -440,7 +451,7 @@ class Game:
                     
                 elif msg_type == "player_count_update":
                     self.current_player_count = message.get("player_count", 0)
-
+                    
                 elif msg_type == "start_game":
                     print("[🎮] ゲーム開始シグナル受信")
                     self.state = "playing"
