@@ -6,7 +6,7 @@ import os
 import random
 class Player:
     player_speed = 5
-    oni_speed = 6
+    oni_speed = 5
     p_image = 0
     caught = False
     image_list = ["client/assets/images/player1.png", "client/assets/images/player2.png", "client/assets/images/player3.png", "client/assets/images/player4.png"]
@@ -29,9 +29,11 @@ class Player:
             self.oni_image = pg.image.load(charimage_path)
             self.oni_image = pg.transform.scale(self.oni_image, (40, 40))
             self.onirect = self.oni_image.get_rect(topleft=(x, y))
+            self.rect = self.onirect # 共通で使えるrectを定義
         else:
             charimage_path = resource_path(Player.image_list[self.p_image])
             self.player_image = pg.image.load(charimage_path)
             self.player_image = pg.transform.scale(self.player_image, (40, 40))
             self.chararect1 = self.player_image.get_rect(center=(x + 20, y + 20)).inflate(-10, -10) # 当たり判定を縮小
+            self.rect = self.chararect1 # 共通で使えるrectを定義
             Player.p_image = (Player.p_image + 1) % len(Player.image_list)

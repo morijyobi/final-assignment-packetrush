@@ -12,6 +12,7 @@ import ipaddress
 import tkinter as tk
 from tkinter import messagebox
 import traceback
+from client.item import Item
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from server.game_state import GameState
 # デプロイするときにファイルのパスでエラーが出てしまうのでそれを解消する関数
@@ -50,6 +51,12 @@ class Game:
         self.player_name_font = pg.font.Font(self.font_path, 18)
         self.player_name = ""
         self.input_mode = "ip" # ipまたはnameのどちらか
+        self.speed_boost_active = False
+        self.speed_boost_time = 0
+        self.items = [] # アイテムリスト(例:speed_itemなど)
+        # 1回生成したItemをキャッシュしておく
+        self.item_objects = {} # ← id: Itemの辞書
+        self.speed = 5
         self.exit_button_img = pg.image.load(resource_path("client/assets/images/endbotton.png"))
         self.retry_button_img = pg.image.load(resource_path("client/assets/images/trybotton.png"))
         self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
@@ -139,6 +146,9 @@ class Game:
             rect = pg.Rect(x, y, width, height)
             self.obstacle_rects.append(rect)
         self.result_shown = False  # 勝敗表示済みフラグ
+        self.items = [
+            Item("client/assets/images/speed_item.png", (300, 400), item_type="speed")
+        ]
     def restart_receive_loop(self):
         # すでにスレッドが動いているか確認して止まっていたら再起動
         if not self.receive_thread or not self.receive_thread.is_alive():
@@ -253,8 +263,9 @@ class Game:
             print("AI鬼に捕まりました!")
             self.state = "result"
             self.show_result("oni")
-        print(f"AI位置: {ai_player.onirect.topleft}")
+        # print(f"AI位置: {ai_player.onirect.topleft}")
     def play_local_game(self):
+        print(f"[デバッグ] self.items = {self.items}")
         # 初期化済みか確認
         if not hasattr(self, "local_initialized") or not self.local_initialized:
             self.player_id = "local_player"
@@ -490,6 +501,17 @@ class Game:
                                 p.chararect1.topleft = pdata["pos"]
                             p.escaped = escaped # 毎回上書き
                             p.caught = caught # 毎回上書きする
+                    # itemsを受け取ってローカルに反映
+                    # self.items = []
+                    # 毎回受信するたびにactive状態だけ更新
+                    for item_data in message.get("items", []):
+                        item_id = item_data["id"]
+                        if item_id not in self.item_objects:
+                            image_path = f"client/assets/images/{item_data['type']}_item.png"
+                            item = Item(image_path, item_data["pos"], item_data["type"])
+                            self.item_objects[item_id] = item
+                        # activeフラグの更新(表示制御)
+                        self.item_objects[item_id].active = item_data["active"]
                 elif msg_type == "game_result":
                     print("[受信]勝者情報を受信:", message)
                     self.winner = message.get("winner")
@@ -574,6 +596,9 @@ class Game:
     # ゲーム画面の描画
     def draw(self):
         screen.blit(haikeimg, (0, 0))
+        # アイテムの描画
+        for item in self.item_objects.values():
+            item.draw(screen)
         # 障害物の描画
         for obs in self.obstacles:
             img = self.obstacle_images.get(obs["type"])
@@ -604,7 +629,6 @@ class Game:
         if self.game_mode == "escape":
             screen.blit(self.goal_image, self.goal_pos)
         pg.display.flip()
-
     # タイトルの表示
     def draw_title(self):
         # タイトル画面(仮)
@@ -628,12 +652,12 @@ class Game:
     # キーボード操作など
     def handle_player_movement(self):
         keys = pg.key.get_pressed()
+        speed = 8 if self.speed_boost_active else 5
         my_player = self.all_players_on_screen.get(self.player_id)
         if not my_player:
             return
 
         moved = False
-        speed = Player.oni_speed if my_player.role == "oni" else Player.player_speed
         rect = my_player.onirect if my_player.role == "oni" else my_player.chararect1
         original_pos = rect.topleft
 
@@ -649,7 +673,16 @@ class Game:
         if keys[pg.K_d]:
             rect.x += speed
             moved = True
-
+        # アイテムとの当たり判定チェック
+        for item in self.item_objects.values(): # 複数のアイテムに対応
+            # player = self.all_players_on_screen.get(self.player_id)
+            if item.check_collision(rect):
+                print(f"[アイテム取得]{my_player.role}が{item.type}を取得!")
+                if item.type == "speed":
+                    self.speed_boost_active = True
+                    self.speed_boost_time = pg.time.get_ticks()
+                    self.speed = 8 # 通常より速く
+                    # self.items.remove(item) # 一度取ったアイテムは削除
         # 画面外に行かせない
         if rect.y < 0:
             rect.y = 0
@@ -837,7 +870,7 @@ class Game:
                     except Exception as e:
                         print(f"[送信エラー] ロビー更新要求: {e}")
             elif self.state == "playing":
-                print("ゲーム画面を描画中")
+                # print("ゲーム画面を描画中")
                 # 通信はオンラインの時だけ実行
                 if self.mode == "online" and current_time - last_send_time > send_interval:
                     try:
@@ -847,9 +880,17 @@ class Game:
                     except Exception as e:
                         print("[送信エラー]", e)
                 self.handle_player_movement()
+                # スピードアップ効果の時間制御
+                if self.speed_boost_active:
+                    now = pg.time.get_ticks()
+                    if now - self.speed_boost_time > 5000: # 5秒経過
+                        self.speed_boost_active = False
+                        self.speed = 5 # 通常に戻す
+                        print("[効果終了]スピードアップが終了しました")
                 if self.mode == "local":
                     self.update_ai_movement()
                 self.draw()
+                # タイマー設定
                 elapsed = pg.time.get_ticks() - self.start_game_time
                 if elapsed >= self.time_limit:
                     self.state = "result"
@@ -874,15 +915,6 @@ class Game:
                     self.state = "mode_select"
             # self.result_shown = False # この行を削除
             self.clock.tick(60)
-
-    
-try:
-    if __name__ == "__main__":
-        game = Game()
-        game.run()
-except Exception as e:
-    with open("error.log", "w") as f:
-        traceback.print_exc(file=f)
-    import time
-    print("エラーが発生しました。error.log を確認してください。")
-    time.sleep(5)
+if __name__ == "__main__":
+    game = Game()
+    game.run()
