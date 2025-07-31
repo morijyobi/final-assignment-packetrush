@@ -190,7 +190,7 @@ def process_message(message, addr):
                         break
                 if oni_pos:
                     for pid, p in players.items():
-                        if p["role"] == "runner":
+                        if p["role"] == "runner" and not p.get("escaped", False):
                             runner_pos = p["pos"]
                             # 20px以内なら接触とみなす（大きさに合わせて調整）
                             if abs(oni_pos[0] - runner_pos[0]) < 30 and abs(oni_pos[1] - runner_pos[1]) < 30:
