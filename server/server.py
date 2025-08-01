@@ -228,6 +228,13 @@ def process_message(message, addr):
 
         # ✅ 勝敗通知後にゲーム状態をリセット
         game_started = False
+    
+    elif msg_type == "game_end":
+        try:
+            game_started = False
+            game_end()
+        except Exception as e:
+            print("error")
 
     elif msg_type == "retry_request":
         player_id = message.get("player_id")
@@ -303,7 +310,23 @@ def start_game():
 
     print("✅ プレイヤーが揃いました。ゲームを開始します。")
  
-
+def game_end():
+    global game_started
+    global players
+    global retry_votes
+    global escaped_players
+    global game_mode
+    print("[サーバー初期化] ゲーム状態とプレイヤー情報をリセット")
+    game_started = False
+    
+    players.clear()# プレイヤー情報を完全にクリア
+    retry_votes.clear()
+    escaped_players.clear()
+    game_mode = "normal"
+    print("[サーバー初期化完了] 新しい接続を待機中…")
+    # for pid in players:
+    #     players[pid]["pos"] = [0, 0] # 初期位置にリセット (または適当な待機位置)
+    #     players[pid]["role"] = None # 役割をリセット
 
 def reset_server_game():
     global game_started
