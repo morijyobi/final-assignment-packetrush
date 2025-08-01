@@ -277,7 +277,7 @@ def assign_roles():
     player_ids = list(players.keys())
     if not player_ids:
         return
-    oni_id = player_ids[0]  # 先頭を鬼にする（適宜ランダムでも可）
+    oni_id = random.choice(player_ids)   # 先頭を鬼にする（適宜ランダムでも可）
 
     for pid in player_ids:
         if pid == oni_id:

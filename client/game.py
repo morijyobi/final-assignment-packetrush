@@ -94,6 +94,9 @@ class Game:
         self.current_player_count = 0 #プレイヤー人数
         self.ip_error_message = ""
         
+        self.ip_text_rect = pg.Rect(100, 250, 300, 40)  # "接続先IPアドレス" の描画位置に合わせて設定
+        self.name_text_rect = pg.Rect(100, 350, 300, 40) # "プレイヤー名" の描画位置に合わせて設定
+        
         self.game_bgm_path = resource_path("client/assets/sounds/立待ち月.mp3") # bgm
         self.lobby_bgm_path = resource_path("client/assets/sounds/華ト月夜.mp3")
         self.current_bgm_path = None
@@ -333,6 +336,18 @@ class Game:
         # 入力内容
         input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
         name_surface = self.font.render(self.player_name, True, (0, 255, 255))
+        # 入力欄のRectを定義（マウスイベント判定にも使う）
+        self.ip_input_rect = pg.Rect(100, 300, 300, 40)
+        self.name_input_rect = pg.Rect(100, 400, 300, 40)
+
+        # 入力欄の背景（クリック領域を分かりやすくする）
+        pg.draw.rect(screen, (50, 50, 50), self.ip_input_rect)
+        pg.draw.rect(screen, (50, 50, 50), self.name_input_rect)
+
+        # 入力欄に入力文字を描画
+        screen.blit(input_surface, self.ip_input_rect.topleft)
+        screen.blit(name_surface, self.name_input_rect.topleft)
+
         # 表示位置
 
         screen.blit(titleimg, (0, 0))
@@ -411,6 +426,10 @@ class Game:
                         self.send_connect_request()
                     # モード切り替えボタンの判定
                     self.handle_title_events(event)
+                    if self.ip_text_rect.collidepoint(event.pos):
+                        self.input_mode = "ip"
+                    elif self.name_text_rect.collidepoint(event.pos):
+                        self.input_mode = "name"
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_TAB:
                         # TABキーで入力対象を切り替える
