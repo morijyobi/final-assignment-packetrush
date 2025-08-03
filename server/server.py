@@ -23,7 +23,7 @@ items = {
                  "respawn_time": 0}
 }
 players = {}
-REQUIRED_PLAYERS = 4
+REQUIRED_PLAYERS = 3
 game_started = False
 game_mode = "normal"
 escaped_players = set()
@@ -147,7 +147,8 @@ def process_message(message, addr):
                     "role": p["role"],
                     "escaped": p.get("escaped", False),
                     "caught": p.get("caught", False)
-                } for pid, p in players.items()
+                } 
+                for pid, p in players.items()
             },
             # アイテム情報を含める
             "items": [
@@ -200,15 +201,16 @@ def process_message(message, addr):
                                     # send_game_result("oni")
                                     break
             # アイテムの衝突判定
-            for item in items.values():
-                if item["active"]:
-                    item_x, item_y = item["pos"]
-                    px, py = new_pos
-                    # 半径30以内に入ったら取得とみなす
-                    if abs(px - item_x) < 30 and abs(py - item_y) < 30:
-                        item["active"] = False
-                        item["respawn_time"] = int(time.time() * 1000) + 10000 # 10秒後
-                        print(f"[アイテム取得]{player_id}が{item['type']}を取得")
+            if not players[player_id].get("caught", False) and not players[player_id].get("escaped", False):
+                for item in items.values():
+                    if item["active"]:
+                        item_x, item_y = item["pos"]
+                        px, py = new_pos
+                        # 半径30以内に入ったら取得とみなす
+                        if abs(px - item_x) < 30 and abs(py - item_y) < 30:
+                            item["active"] = False
+                            item["respawn_time"] = int(time.time() * 1000) + 10000 # 10秒後
+                            print(f"[アイテム取得]{player_id}が{item['type']}を取得")
         else:
             print(f"[警告] {player_id} は登録されていません")
     elif msg_type == "game_result":

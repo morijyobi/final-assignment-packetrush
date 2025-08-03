@@ -10,11 +10,11 @@ class Player:
     p_image = 0
     caught = False
     image_list = ["client/assets/images/player1.png", "client/assets/images/player2.png", "client/assets/images/player3.png", "client/assets/images/player4.png"]
-    def __init__(self, role="runner", x=100, y=100, name="", caught = False):
+    def __init__(self, role="runner", x=100, y=100, name="", caught = False, escaped=False):
         self.role = role
         self.name = name
         self.caught = caught
-        self.escaped = False
+        self.escaped = escaped
         self.x, self.y = x, y
         # デプロイ時にパスのエラーを解消するために使った関数
         def resource_path(relative_path):

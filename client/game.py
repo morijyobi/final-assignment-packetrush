@@ -498,6 +498,7 @@ class Game:
                         name = pdata.get("name", f"Player{pid[:4]}") # 名前を取得
                         caught = pdata.get("caught", False)
                         escaped = pdata.get("escaped", False)
+                        # print(f"[更新] {name} ({pid}): caught={caught}, escaped={escaped}")
                         if pid not in self.all_players_on_screen:
                             p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name, caught)
                             p.caught = caught
@@ -510,8 +511,8 @@ class Game:
                                 p.onirect.topleft = pdata["pos"]
                             else:
                                 p.chararect1.topleft = pdata["pos"]
-                            p.escaped = escaped # 毎回上書き
-                            p.caught = caught # 毎回上書きする
+                            p.escaped = pdata.get("escaped", False) # 毎回上書き
+                            p.caught = pdata.get("caught", False) # 毎回上書きする
                     # itemsを受け取ってローカルに反映
                     # self.items = []
                     # 毎回受信するたびにactive状態だけ更新
@@ -623,12 +624,12 @@ class Game:
                 name_surface = self.player_name_font.render(name, True, (255, 255, 255))
                 name_pos = (player.chararect1.x + 6, player.chararect1.y - 20) if player.role == "runner" else (player.onirect.x + 6, player.onirect.y - 20)
                 screen.blit(name_surface, name_pos)
+            if getattr(player, "caught", False) or getattr(player, "escaped", False):
+                continue  # 脱出済み or 捕まっていたら描画しない
             # キャラ画像の描画(元々ある部分)
             if player.role == "oni":
                 screen.blit(player.oni_image, player.onirect)
             else:
-                if getattr(player, "caught", False):
-                    continue
                 screen.blit(player.player_image, player.chararect1)
         # 残り時間の表示
         if hasattr(self, "start_game_time") and hasattr(self, "time_limit"):
