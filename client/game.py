@@ -761,12 +761,22 @@ class Game:
                 ]
                 # 脱出したランナー数の確認
                 escaped_count = 0
+                caught_count = 0
+                e_or_c = 0
                 for r in runners:
                     if getattr(r, "escaped", False):
                         escaped_count += 1
-                print(f"[チェック]脱出済みランナー数:{escaped_count}/{len(runners)}")
+                        e_or_c += 1
+                        self.state = "result"
+                        self.show_result("runner")
+                    elif getattr(r, "caught", False) or self.winner == "oni":
+                        caught_count += 1
+                        e_or_c += 1
+                        self.state = "result"
+                        self.show_result("oni")
+                print(f"[チェック]脱出済みランナー数:{e_or_c}/{len(runners)}")
                 # 全員がゴールしたかチェック
-                if escaped_count == len(runners) and len(runners) > 0:
+                if (caught_count) == (len(runners) - escaped_count) and len(runners) > 0:
                     print("全ランナーが脱出!人間の勝利!")
                     self.state = "result"
                     self.show_result("runner") # 人間の勝利
@@ -907,7 +917,7 @@ class Game:
                     self.state = "result"
                     # 🔽 escapeモードのときは鬼の勝ち
                     if self.game_mode == "escape":
-                        self.winner = "oni"
+                        self.winner = "oni"                       
                         self.show_result("oni")  # 鬼の勝利(escapeモード)
                         if self.mode == "online":
                             msg = {"type": "game_result", "winner": "oni"}
