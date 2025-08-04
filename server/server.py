@@ -23,7 +23,7 @@ items = {
                  "respawn_time": 0}
 }
 players = {}
-REQUIRED_PLAYERS = 3
+REQUIRED_PLAYERS = 4
 game_started = False
 game_mode = "normal"
 escaped_players = set()
