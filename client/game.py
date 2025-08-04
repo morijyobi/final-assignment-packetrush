@@ -615,18 +615,18 @@ class Game:
                         sys.exit()
                     # もう一度ボタンのクリックイベント処理
                     elif self.retry_button_rect.collidepoint(event.pos):
+                        current_mode = self.mode
                         if self.server_addr:
                             print("[🔁] 再試合希望を送信")
                             msg = {"type": "retry_request", "player_id": self.player_id}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                         self.reset_game_state()
-                        # if self.mode == "local": 
-                        #     self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
-                        # elif self.mode == "online":
-                        self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
+                        if current_mode == "local":
+                            self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
+                        elif current_mode == "online":
+                            self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
                         self.ip_entered = False
                         #     # 再接続要求を送る
-                        #     print("ああああああああああああああああ")
                         #     self.send_connect_request()
                         waiting = False
             pg.time.delay(100)  # CPUへの負荷軽減
