@@ -225,7 +225,7 @@ class Game:
             print("update_ai_movement: ai_player or runner not found")
             return
 
-        speed = 2
+        speed = 4
         moved = False
 
         directions = []
@@ -302,7 +302,7 @@ class Game:
         root = tk.Tk()
         root.withdraw() # メインウィンドウを表示しないようにする
         # ヘルプメッセージ表示
-        messagebox.showinfo("操作方法","WASDで移動します。\n鬼は人間を追いかけてください!\n人間は制限時間まで逃げてください。")
+        messagebox.showinfo("操作方法","WASDで移動します。\n鬼は人間を追いかけてください!\n人間は制限時間まで逃げてください。\n脱出モードの場合は出口を目指しましょう!")
         root.destroy() # 使い終わったら破棄
     # プレイヤーと障害物の当たり判定を確認
     def collides_with_obstacles(self, rect, obstacles):
@@ -400,14 +400,6 @@ class Game:
         text = self.jpfont.render(f"待機:{self.current_player_count}/{max_players}", True, (255, 255, 255))
         screen.blit(text, (100, 250))
         # screen.blit(text, (100, 250))
-        for event in pg.event.get():
-            if event.type == pg.MOUSEBUTTONDOWN:
-                if self.robby_exit_button_rect.collidepoint(event.pos):
-                    #退出する前の自分がサーバーに残ったままになっている
-                    self.state = "mode_select" # ロビー画面からモード選択画面に戻る
-                    disconnect_msg = {"type": "disconnect", "player_id": self.player_id}
-                    self.socket.sendto(json.dumps(disconnect_msg).encode(), self.server_addr)
-                    self.reset_game_state() # ゲーム状態をリセット
         pg.display.flip()
 
     # ロビーでのIP入力ループ
@@ -517,6 +509,7 @@ class Game:
                         name = pdata.get("name", f"Player{pid[:4]}") # 名前を取得
                         caught = pdata.get("caught", False)
                         escaped = pdata.get("escaped", False)
+                        # print(f"[更新] {name} ({pid}): caught={caught}, escaped={escaped}")
                         if pid not in self.all_players_on_screen:
                             p = Player(pdata["role"], pdata["pos"][0], pdata["pos"][1], name, caught)
                             p.caught = caught
@@ -529,8 +522,8 @@ class Game:
                                 p.onirect.topleft = pdata["pos"]
                             else:
                                 p.chararect1.topleft = pdata["pos"]
-                            p.escaped = escaped # 毎回上書き
-                            p.caught = caught # 毎回上書きする
+                            p.escaped = pdata.get("escaped", False) # 毎回上書き
+                            p.caught = pdata.get("caught", False) # 毎回上書きする
                     # itemsを受け取ってローカルに反映
                     # self.items = []
                     # 毎回受信するたびにactive状態だけ更新
@@ -649,12 +642,12 @@ class Game:
                 name_surface = self.player_name_font.render(name, True, (255, 255, 255))
                 name_pos = (player.chararect1.x + 6, player.chararect1.y - 20) if player.role == "runner" else (player.onirect.x + 6, player.onirect.y - 20)
                 screen.blit(name_surface, name_pos)
+            if getattr(player, "caught", False) or getattr(player, "escaped", False):
+                continue  # 脱出済み or 捕まっていたら描画しない
             # キャラ画像の描画(元々ある部分)
             if player.role == "oni":
                 screen.blit(player.oni_image, player.onirect)
             else:
-                if getattr(player, "caught", False):
-                    continue
                 screen.blit(player.player_image, player.chararect1)
         # 残り時間の表示
         if hasattr(self, "start_game_time") and hasattr(self, "time_limit"):
@@ -864,13 +857,20 @@ class Game:
                 target_bgm_path = self.lobby_bgm_path
             elif self.state in ["playing", "play_local"]:
                 target_bgm_path = self.game_bgm_path
-            if target_bgm_path and self.current_bgm_path != target_bgm_path:
-                try:
-                    pg.mixer.music.load(target_bgm_path)
-                    pg.mixer.music.play(-1)
-                    self.current_bgm_path = target_bgm_path
-                except pg.error as e:
-                    print(f"bgmの再生失敗:{e}")
+            # BGM再生 or 停止処理
+            if target_bgm_path:
+                if self.current_bgm_path != target_bgm_path:
+                    try:
+                        pg.mixer.music.load(target_bgm_path)
+                        pg.mixer.music.play(-1)
+                        self.current_bgm_path = target_bgm_path
+                    except pg.error as e:
+                        print(f"bgmの再生失敗:{e}")
+                        self.current_bgm_path = None
+            else:
+                # 画面遷移でBGM不要な状態になったら停止
+                if pg.mixer.music.get_busy():
+                    pg.mixer.music.stop()
                     self.current_bgm_path = None
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -884,6 +884,14 @@ class Game:
                         elif self.online_btn_rect.collidepoint(event.pos):
                             self.mode = "online"
                             self.state = "input_ip" # オンラインモードへ
+                elif self.state == "lobby":
+                    if event.type == pg.MOUSEBUTTONDOWN:
+                        if self.robby_exit_button_rect.collidepoint(event.pos):
+                            print("[クリック] ロビー退出ボタンが押されました")
+                            self.state = "mode_select"
+                            disconnect_msg = {"type": "disconnect", "player_id": self.player_id}
+                            self.socket.sendto(json.dumps(disconnect_msg).encode(), self.server_addr)
+                            self.reset_game_state()
             current_time = pg.time.get_ticks()
             if self.state == "mode_select":
                 self.draw_mode_select()
