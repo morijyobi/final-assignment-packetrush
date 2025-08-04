@@ -165,11 +165,13 @@ class Game:
 
     def reset_game_state(self):
     # ゲームの状態変数を初期値にリセット
+        self.running = False
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_thread.join(timeout=1.0)
         self.players = {}
         self.all_players_on_screen = {}
         self.start_game_time = 0
         self.input_text = ""
-        self.running = True
         self.player_id = None
         self.ip_entered = False
         self.last_send_time = 0
@@ -181,7 +183,16 @@ class Game:
         self.mode = None  # ローカル・オンライン問わずリセット
         self.server_ip = ""  # IPをリセット
         self.player_name = ""  # 名前もリセット
-
+        
+        if self.socket:
+            self.socket.close()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.settimeout(0.1)
+        
+        self.running = True
+        self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
+        self.receive_thread.start()
+        
         if hasattr(self, "local_initialized"):
             del self.local_initialized
         if hasattr(self, "ai_id"):
@@ -491,6 +502,7 @@ class Game:
                 if msg_type == "connect_ack":
                     self.player_id = message["player_id"]
                     print(f"[接続成功] プレイヤーID: {self.player_id}")
+                    self.state = "lobby"
                     
                 elif msg_type == "player_count_update":
                     self.current_player_count = message.get("player_count", 0)
@@ -542,13 +554,11 @@ class Game:
                     self.show_result(self.winner)
                     print("[受信] 勝者情報を受信:", message)
                 elif msg_type == "retry_start":
-                    self.result_shown = False
-                    self.state = "lobby"
-                    self.running = True
-                    self.all_players_on_screen.clear()
-                    self.players.clear()
-                    self.draw_lobby()
-                    self.restart_receive_loop()
+                    self.reset_game_state()
+                    self.state = "input_ip"
+                    self.ip_entered = False
+                    self.send_connect_request()
+                     
                 else:
                     print(f"[警告] サーバーから未知の応答: {message}")
 
@@ -610,13 +620,14 @@ class Game:
                             msg = {"type": "retry_request", "player_id": self.player_id}
                             self.socket.sendto(json.dumps(msg).encode(), self.server_addr)
                         self.reset_game_state()
-                        if self.mode == "local": 
-                            self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
-                        elif self.mode == "online":
-                            self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
-                            self.ip_entered = False
-                            # 再接続要求を送る
-                            self.send_connect_request()
+                        # if self.mode == "local": 
+                        #     self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
+                        # elif self.mode == "online":
+                        self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
+                        self.ip_entered = False
+                        #     # 再接続要求を送る
+                        #     print("ああああああああああああああああ")
+                        #     self.send_connect_request()
                         waiting = False
             pg.time.delay(100)  # CPUへの負荷軽減
 
