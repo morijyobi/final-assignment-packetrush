@@ -62,6 +62,7 @@ class Game:
         self.help_button_img = pg.image.load(resource_path("client/assets/images/helpbutton.png"))
         self.title_button_img = pg.image.load(resource_path("client/assets/images/titlebutton.png"))
         self.robby_exit_img = pg.image.load(resource_path("client/assets/images/exitbutton.png"))
+        self.back_button_img = pg.image.load(resource_path("client/assets/images/backbutton.png"))
         self.font = pg.font.SysFont(None, 48)
         self.start_game_time = 0
         self.input_text = ""
@@ -374,9 +375,13 @@ class Game:
         self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
         self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
         screen.blit(self.help_button_img, self.help_button_rect)
-        self.title_button_img = pg.transform.scale(self.title_button_img, (250, 100))
-        self.title_button_rect = self.title_button_img.get_rect(topleft=(300, 450))
+        self.title_button_img = pg.transform.scale(self.title_button_img, (290, 130))
+        self.title_button_rect = self.title_button_img.get_rect(topleft=(450, 450))
         screen.blit(self.title_button_img, self.title_button_rect)
+        #モード選択画面に戻るボタン
+        self.back_button_img = pg.transform.scale(self.back_button_img, (290, 130))
+        self.back_button_rect = self.back_button_img.get_rect(topleft=(100, 450))
+        screen.blit(self.back_button_img, self.back_button_rect)
         # ★★★ 描画順序を変更: 他の描画の後、flipの直前に移動 ★★★
         # ホストとしてプレイする場合の参考情報として表示
         ip_text = self.jpfont.render(f"ホストの場合のIP: {self.my_local_ip}", True, (255, 255, 255)) 
@@ -413,9 +418,22 @@ class Game:
                 elif event.type == pg.MOUSEBUTTONDOWN:
                     if self.help_button_rect.collidepoint(event.pos):
                         self.show_help_message()
+                    # 確定ボタン
                     if self.title_button_rect.collidepoint(event.pos):
-                        self.ip_entered = True
-                        self.send_connect_request()
+                        if self.server_ip and self.player_name:
+                            self.ip_entered = True
+                            self.send_connect_request()
+                            # ループを抜けるためにreturn
+                            return
+                        else:
+                            self.ip_error_message = "IPアドレスとプレイヤー名を入力してください！"
+                    # 戻るボタン
+                    if hasattr(self, 'back_button_rect') and self.back_button_rect.collidepoint(event.pos):
+                        print("モード選択画面に戻ります。")
+                        self.state = "mode_select"
+                        # ループを抜けるためにreturn
+                        return
+                
                     # モード切り替えボタンの判定
                     self.handle_title_events(event)
                     if self.ip_text_rect.collidepoint(event.pos):
@@ -423,6 +441,7 @@ class Game:
                     elif self.name_text_rect.collidepoint(event.pos):
                         self.input_mode = "name"
                 elif event.type == pg.KEYDOWN:
+                    # ... キー入力処理 (この部分は変更なし) ...
                     if event.key == pg.K_TAB:
                         # TABキーで入力対象を切り替える
                         self.input_mode = "name" if self.input_mode == "ip" else "ip"
@@ -430,6 +449,9 @@ class Game:
                         if self.server_ip and self.player_name:
                             self.ip_entered = True
                             self.send_connect_request()
+                            return # ここでもreturnを追加
+                        else:
+                            self.ip_error_message = "IPアドレスとプレイヤー名を入力してください！"
                     elif event.key == pg.K_BACKSPACE:
                         if self.input_mode == "ip":
                             self.server_ip = self.server_ip[:-1]
@@ -906,9 +928,9 @@ class Game:
             if self.state == "mode_select":
                 self.draw_mode_select()
             elif self.state == "input_ip":
-                while not self.ip_entered:
-                    self.lobby_loop()
-                self.state = "lobby"
+                self.lobby_loop()
+                if self.ip_entered:
+                    self.state = "lobby"
             elif self.state == "play_local":
                 self.play_local_game()
                 # if event.type == pg.MOUSEBUTTONDOWN:

@@ -3,6 +3,7 @@ import json
 import uuid
 import threading
 import time
+import random
 import pygame as pg
 # サーバーソケット初期化
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
