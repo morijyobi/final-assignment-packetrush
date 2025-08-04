@@ -4,6 +4,7 @@ import uuid
 import threading
 import time
 import pygame as pg
+import random
 # サーバーソケット初期化
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind(("0.0.0.0", 5000))
