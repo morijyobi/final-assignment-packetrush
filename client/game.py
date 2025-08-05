@@ -346,8 +346,8 @@ class Game:
         title = self.jpfont.render("接続先IPアドレス", True, ip_color)
         title_name = self.jpfont.render("プレイヤー名", True, name_color)
         # 入力内容
-        input_surface = self.font.render(self.server_ip, True, (0, 255, 0))
-        name_surface = self.font.render(self.player_name, True, (0, 255, 255))
+        input_surface = self.jpfont.render(self.server_ip, True, (0, 255, 0))
+        name_surface = self.jpfont.render(self.player_name, True, (0, 255, 255))
         # 入力欄のRectを定義（マウスイベント判定にも使う）
         self.ip_input_rect = pg.Rect(100, 300, 300, 40)
         self.name_input_rect = pg.Rect(100, 400, 300, 40)
@@ -420,6 +420,7 @@ class Game:
 
     # ロビーでのIP入力ループ
     def lobby_loop(self):
+        pg.key.start_text_input()
         while not self.ip_entered:
             self.draw_ip_input()
             for event in pg.event.get():
@@ -468,13 +469,12 @@ class Game:
                             self.server_ip = self.server_ip[:-1]
                         else:
                             self.player_name = self.player_name[:-1]
-                    else:
-                        # 数字、ドットなど入力可能な文字のみ
-                        if event.unicode.isprintable():
-                            if self.input_mode == "ip" and len(self.server_ip) < 15:
-                                self.server_ip += event.unicode
-                            elif self.input_mode == "name" and len(self.player_name) < 12:
-                                self.player_name += event.unicode
+                elif event.type == pg.TEXTINPUT:
+                    if self.input_mode == "ip" and len(self.server_ip) < 15:
+                        self.server_ip += event.text
+                    elif self.input_mode == "name" and len(self.player_name) < 12:
+                        self.player_name += event.text
+        pg.key.stop_text_input()
 
             
     # サーバーへの接続要求を送る
