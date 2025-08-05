@@ -235,7 +235,7 @@ def process_message(message, addr):
     elif msg_type == "game_end":
         try:
             game_started = False
-            game_end()
+            server_reset()
         except Exception as e:
             print("error")
 
@@ -244,20 +244,21 @@ def process_message(message, addr):
         if player_id in players:
             retry_votes.add(player_id)
             print(f"[再試合リクエスト] {player_id}")
+        server_reset()
         
-            if len(retry_votes) == len(players):
-                print("[再試合] 全員の再試合リクエストが揃いました。ゲームを再開します。")
+        #     if len(retry_votes) == len(players):
+        #         print("[再試合] 全員の再試合リクエストが揃いました。ゲームを再開します。")
 
-                retry_votes.clear()
+        #         retry_votes.clear()
 
-                # まず retry_start を送ってロビーへ戻す
-                retry_msg = {"type": "retry_start"}
-                for p in players.values():
-                    server_socket.sendto(json.dumps(retry_msg).encode(), p["addr"])
+        #         # まず retry_start を送ってロビーへ戻す
+        #         retry_msg = {"type": "retry_start"}
+        #         for p in players.values():
+        #             server_socket.sendto(json.dumps(retry_msg).encode(), p["addr"])
 
-                time.sleep(1.0)  # 少し待つ（ロビー描画）
+        #         time.sleep(1.0)  # 少し待つ（ロビー描画）
 
-                players.clear()  # ここでクリア（遅らせる）
+        #         players.clear()  # ここでクリア（遅らせる）
     elif msg_type == "disconnect":
         player_id = message.get("player_id")
         if player_id in players:
@@ -313,7 +314,7 @@ def start_game():
 
     print("✅ プレイヤーが揃いました。ゲームを開始します。")
  
-def game_end():
+def server_reset():
     global game_started
     global players
     global retry_votes
