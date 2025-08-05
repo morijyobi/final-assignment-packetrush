@@ -11,6 +11,7 @@ server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind(("0.0.0.0", 5000))
 server_socket.settimeout(0.5)
 retry_votes = set()  # 再試合希望者のIDを保存
+# game_result_sent = False
 items = {
     "item_001": {"id": "item_1", 
                  "type": "speed", 
@@ -173,17 +174,22 @@ def process_message(message, addr):
             players[player_id]["pos"] = new_pos
             # print(f"[更新] {player_id} の位置を {new_pos} に更新")
             # 脱出チェック(ゴール座標に重なったか)
-            if game_mode == "escape": # <-脱出モード限定
+            if game_mode == "escape":
                 goal_x, goal_y = [600, 100]
                 if abs(new_pos[0] - goal_x) < 30 and abs(new_pos[1] - goal_y) < 30:
-                    players[player_id]["escaped"] = True
-                    print(f"[脱出]{player_id}が脱出しました")
-                    # 脱出済みの人数を数える
-                    total_runners = sum(1 for p in players.values() if p["role"] == "runner")
-                    escaped_runners = sum(1 for p in players.values() if p.get("escaped"))
-                    print(f"[チェック]脱出済みランナー数:{escaped_runners}/{total_runners}")
-                    if escaped_runners == total_runners:
-                        send_game_result("runner") # 全員脱出したので人間勝利
+                    player = players[player_id]
+                    # ここで「捕まっていたら脱出不可」を明示的にチェック
+                    if player.get("caught", False):
+                        # 捕まっているなら脱出処理をスキップしてログだけ残す
+                        print(f"[脱出拒否] 捕まっているプレイヤー {player_id} が脱出地点に接触しました。脱出不可。")
+                    elif not player.get("escaped", False):
+                        player["escaped"] = True
+                        print(f"[脱出]{player_id}が脱出しました")
+                        total_runners = sum(1 for p in players.values() if p["role"] == "runner")
+                        escaped_runners = sum(1 for p in players.values() if p.get("escaped"))
+                        print(f"[チェック]脱出済みランナー数:{escaped_runners}/{total_runners}")
+                        if escaped_runners == total_runners:
+                            send_game_result(winner="human")
             # 👇 鬼がランナーに接触しているかをチェック（ゲーム開始後のみ）
             if game_started:
                 oni_pos = None
@@ -195,12 +201,15 @@ def process_message(message, addr):
                     for pid, p in players.items():
                         if p["role"] == "runner" and not p.get("escaped", False):
                             runner_pos = p["pos"]
-                            # 20px以内なら接触とみなす（大きさに合わせて調整）
                             if abs(oni_pos[0] - runner_pos[0]) < 30 and abs(oni_pos[1] - runner_pos[1]) < 30:
                                 if not p.get("caught", False):
                                     print(f"[👹接触] 鬼がランナーを捕まえました！")
-                                    p["caught"] = True # 捕まったフラグを立てる
-                                    # send_game_result("oni")
+                                    p["caught"] = True
+                                    # ここで捕まった人数をカウントして鬼勝利判定
+                                    caught_runners = sum(1 for p in players.values() if p["role"] == "runner" and p.get("caught", False))
+                                    total_runners = sum(1 for p in players.values() if p["role"] == "runner")
+                                    if caught_runners == total_runners:
+                                        send_game_result(winner="oni")
                                     break
             # アイテムの衝突判定
             if not players[player_id].get("caught", False) and not players[player_id].get("escaped", False):
@@ -246,20 +255,6 @@ def process_message(message, addr):
             retry_votes.add(player_id)
             print(f"[再試合リクエスト] {player_id}")
         server_reset()
-        
-        #     if len(retry_votes) == len(players):
-        #         print("[再試合] 全員の再試合リクエストが揃いました。ゲームを再開します。")
-
-        #         retry_votes.clear()
-
-        #         # まず retry_start を送ってロビーへ戻す
-        #         retry_msg = {"type": "retry_start"}
-        #         for p in players.values():
-        #             server_socket.sendto(json.dumps(retry_msg).encode(), p["addr"])
-
-        #         time.sleep(1.0)  # 少し待つ（ロビー描画）
-
-        #         players.clear()  # ここでクリア（遅らせる）
     elif msg_type == "disconnect":
         player_id = message.get("player_id")
         if player_id in players:
@@ -321,9 +316,10 @@ def server_reset():
     global retry_votes
     global escaped_players
     global game_mode
+    # global game_result_sent
     print("[サーバー初期化] ゲーム状態とプレイヤー情報をリセット")
     game_started = False
-    
+    # game_result_sent = False
     players.clear()# プレイヤー情報を完全にクリア
     retry_votes.clear()
     escaped_players.clear()
@@ -363,6 +359,6 @@ def send_game_result(winner):
     game_started = False  # ゲーム終了
     print(f"[🏁ゲーム終了] 勝者: {winner}")
     reset_server_game() # ★ ここでサーバーのゲーム状態をリセット
-    
+
 # 🔄 受信ループ開始
 receive_loop()
