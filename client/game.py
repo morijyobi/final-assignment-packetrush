@@ -182,8 +182,8 @@ class Game:
         self.result_shown = False
         self.result_winner = None
         self.mode = None  # ローカル・オンライン問わずリセット
-        self.server_ip = ""  # IPをリセット
-        self.player_name = ""  # 名前もリセット
+        # self.server_ip = ""  # IPをリセット
+        # self.player_name = ""  # 名前もリセット
         
         if self.socket:
             self.socket.close()
@@ -206,7 +206,7 @@ class Game:
                 player.caught = False
         # 状態を戻す
         if self.mode == "online":
-            self.state = "input_ip"
+            self.state = "mode_select"
             if self.player_id:
                 disconnect_msg = {"type": "disconnect", "player_id": self.player_id}
                 self.socket.sendto(json.dumps(disconnect_msg).encode(), self.server_addr)
@@ -308,6 +308,10 @@ class Game:
         screen.blit(title, (300, 100))
         screen.blit(local_btn, self.local_btn_rect.topleft)
         screen.blit(online_btn, self.online_btn_rect.topleft)
+        # ヘルプボタン
+        self.help_button_img = pg.transform.scale(self.help_button_img, (150, 80))
+        self.help_button_rect = self.help_button_img.get_rect(topleft=(650, 0))
+        screen.blit(self.help_button_img, self.help_button_rect)
         pg.display.flip()
     def show_help_message(self):
         # tkinterのルートウィンドウを非表示で作成
@@ -395,9 +399,12 @@ class Game:
         screen.blit(self.back_button_img, self.back_button_rect)
         # ★★★ 描画順序を変更: 他の描画の後、flipの直前に移動 ★★★
         # ホストとしてプレイする場合の参考情報として表示
-        ip_text = self.jpfont.render(f"ホストの場合のIP: {self.my_local_ip}", True, (255, 255, 255)) 
+        ip_text = self.jpfont.render(f"自分のIP: {self.my_local_ip}", True, (255, 255, 255)) 
         # config.SCREEN_WIDTH と config.SCREEN_HEIGHT を使う
         screen.blit(ip_text, (100,170))
+        ip_explanation_font = pg.font.Font(self.font_path, 24)
+        ip_explanation_text = ip_explanation_font.render("※サーバーを立ち上げてる方のIPアドレスを入力してください", True, (255, 255, 255))
+        screen.blit(ip_explanation_text, (80, 220))
         # ★★★ 描画順序変更 ここまで ★★★
         pg.display.flip()
     # ゲーム開始待機ロビー画面
@@ -580,7 +587,7 @@ class Game:
                     self.state = "input_ip"
                     self.ip_entered = False
                     self.send_connect_request()
-                     
+                
                 else:
                     print(f"[警告] サーバーから未知の応答: {message}")
 
@@ -646,7 +653,7 @@ class Game:
                         if current_mode == "local":
                             self.state = "mode_select" # 一人で遊んだ場合 → モード選択画面に戻る
                         elif current_mode == "online":
-                            self.state = "input_ip" # オンラインの場合 → IPアドレス入力画面に戻る
+                            self.state = "mode_select" # オンラインの場合 → IPアドレス入力画面に戻る
                         self.ip_entered = False
                         #     # 再接続要求を送る
                         #     self.send_connect_request()
@@ -668,7 +675,7 @@ class Game:
             if img:
                 screen.blit(img, obs["pos"])
         # 全プレイヤーの描画（IDごと）
-        for pid, player in self.all_players_on_screen.items():
+        for pid, player in list(self.all_players_on_screen.items()):
             if hasattr(self, "players") and pid in self.players:
                 player_data = self.players[pid]
                 name = player_data.get("name", "")
@@ -921,6 +928,8 @@ class Game:
                 # 状態に応じて処理分岐
                 if self.state == "mode_select":
                     if event.type == pg.MOUSEBUTTONDOWN:
+                        if self.help_button_rect.collidepoint(event.pos):
+                            self.show_help_message()
                         if self.local_btn_rect.collidepoint(event.pos):
                             self.mode = "local"
                             self.state = "play_local" # ローカルモードへ
@@ -1000,7 +1009,8 @@ class Game:
                 if not self.result_shown and self.winner:
                     self.result_shown = True
                     self.show_result(self.winner)
-                    self.state = "mode_select"
+                    if self.mode == "local":
+                        self.state = "mode_select"
             # self.result_shown = False # この行を削除
             self.clock.tick(60)
 if __name__ == "__main__":
